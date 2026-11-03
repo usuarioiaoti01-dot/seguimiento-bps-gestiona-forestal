@@ -1,0 +1,18 @@
+# Nunca debe entrar en la imagen
+.env
+.env.*
+!.env.example
+data/demo-estado.json
+node_modules
+.git
+.github
+.claude
+
+# No hace falta en ejecución
+test
+db
+herramientas
+*.md
+Dockerfile
+.dockerignore
+*.log
