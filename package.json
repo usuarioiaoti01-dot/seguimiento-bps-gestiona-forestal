@@ -1,0 +1,27 @@
+{
+  "name": "seguimiento-bps-gestiona-forestal",
+  "version": "1.0.0",
+  "description": "Seguimiento de contratación (adendas), vigencia y planes de trabajo de los consultores BPS del Gestiona Forestal – OTI SERFOR",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "semilla": "python herramientas/generar_semilla.py",
+    "bd:probar": "node herramientas/bd.js probar",
+    "bd:instalar": "node herramientas/bd.js instalar"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.22.3",
+    "jsonwebtoken": "^9.0.3",
+    "mssql": "^11.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

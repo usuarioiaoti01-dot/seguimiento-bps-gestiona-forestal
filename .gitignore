@@ -1,0 +1,5 @@
+node_modules/
+.env
+data/demo-estado.json
+*.log
+.claude/
