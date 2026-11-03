@@ -22,7 +22,7 @@ async function crearApp() {
 
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback');
+  app.set('trust proxy', config.confiarProxy);
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use((req, res, next) => {

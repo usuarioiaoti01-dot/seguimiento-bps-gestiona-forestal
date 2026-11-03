@@ -88,6 +88,8 @@ npm run bd:instalar    # ejecuta db/01 a db/05 en orden (requiere db_owner; no s
 ## 5. Despliegue para compartir con colaboradores
 - Servidor Windows/Linux de la OTI con Node.js 22+, ejecutado como servicio (p. ej. NSSM en Windows o `systemd`/PM2 en Linux).
 - Publicar detrás de IIS (ARR) o Nginx con **HTTPS** y `COOKIE_SEGURA=true`, `NODE_ENV=production`, `SESION_SECRETO` aleatorio.
+- Detrás de un proxy inverso o de Cloud Run, defina `TRUST_PROXY` (nº de saltos de proxy; Cloud Run = `1`). Si no, el límite de intentos de ingreso agrupa a todos los usuarios en una sola IP.
+- Hay un `Dockerfile` (Node 22, escucha en el puerto 8080 y se ejecuta como usuario sin privilegios): `docker build -t sgf-seguimiento .`. La imagen no incluye `.env`; pase la configuración como variables de entorno.
 - Acceso solo desde la red institucional/VPN. Salida a `api.anthropic.com` habilitada en el firewall o proxy (`NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY`).
 
 ## 6. Trabajo con Claude Code

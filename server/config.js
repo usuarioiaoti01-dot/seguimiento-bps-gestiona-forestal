@@ -26,6 +26,9 @@ const config = {
   raiz: RAIZ,
   puerto: Number(e.PUERTO || 3080),
   produccion: e.NODE_ENV === 'production',
+  // Proxy inverso de confianza (para req.ip y el límite de intentos de ingreso). Número = saltos de proxy
+  // (Cloud Run: 1), true/false, o lista/alias de Express (p. ej. 'loopback'). Por defecto solo loopback.
+  confiarProxy: (() => { const v = (e.TRUST_PROXY || '').trim(); if (!v) return 'loopback'; if (/^\d+$/.test(v)) return Number(v); if (/^(true|false)$/i.test(v)) return v.toLowerCase() === 'true'; return v; })(),
   modoDatos: (e.MODO_DATOS || 'memoria').toLowerCase(), // memoria | sqlserver
   archivoDemo: e.ARCHIVO_DEMO || path.join(RAIZ, 'data', 'demo-estado.json'),
   sqlserver: {
