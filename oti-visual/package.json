@@ -1,0 +1,11 @@
+{
+  "name": "oti-visual",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OTI Visual (SERFOR): tokens de diseño y componente VigenciaTimeline sin dependencias.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "demo": "npx serve ."
+  }
+}

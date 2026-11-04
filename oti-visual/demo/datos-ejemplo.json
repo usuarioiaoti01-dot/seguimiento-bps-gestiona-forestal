@@ -1,0 +1,17 @@
+{
+  "_nota": "Fechas estimadas a partir de la captura original (±1 día). Reemplazar por datos reales.",
+  "corte": "2026-11-04",
+  "data": [
+    { "id": "PBQ", "inicio": "2026-11-09", "fin": "2026-12-31", "adenda": null,         "terminoProbable": "2026-12-31" },
+    { "id": "ASL", "inicio": "2026-11-09", "fin": "2026-12-31", "adenda": null,         "terminoProbable": null },
+    { "id": "EBS", "inicio": "2026-11-09", "fin": "2026-12-31", "adenda": null,         "terminoProbable": "2026-12-31" },
+    { "id": "ERB", "inicio": "2026-10-15", "fin": "2026-11-14", "adenda": "2026-12-31", "terminoProbable": "2026-11-30" },
+    { "id": "EVE", "inicio": "2026-10-15", "fin": "2026-11-14", "adenda": "2026-12-31", "terminoProbable": "2026-12-04" },
+    { "id": "APA", "inicio": "2026-10-15", "fin": "2026-11-14", "adenda": "2026-12-31", "terminoProbable": "2026-12-04" },
+    { "id": "KAP", "inicio": "2026-10-30", "fin": "2026-12-31", "adenda": null,         "terminoProbable": "2027-01-02" },
+    { "id": "CAC", "inicio": "2026-10-14", "fin": "2026-11-13", "adenda": "2026-12-31", "terminoProbable": "2026-12-04" },
+    { "id": "JCM", "inicio": "2026-10-31", "fin": "2026-12-31", "adenda": null,         "terminoProbable": "2027-01-04" },
+    { "id": "ELP", "inicio": "2026-10-23", "fin": "2026-12-31", "adenda": null,         "terminoProbable": "2026-12-30" },
+    { "id": "YMF", "inicio": "2026-10-31", "fin": "2026-12-31", "adenda": null,         "terminoProbable": null }
+  ]
+}

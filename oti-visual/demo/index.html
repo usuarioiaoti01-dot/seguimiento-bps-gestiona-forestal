@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Demo con módulos ES. Servir por HTTP desde la raíz del paquete:  npx serve .   (o  python -m http.server)  y abrir /demo/ -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigencias — demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../design-system/tokens.css">
+<link rel="stylesheet" href="../src/vigencia-timeline/vigencia-timeline.css">
+<style>
+  body { margin: 0; background: var(--surface-page); font-family: var(--font-sans); }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px; }
+  .theme { margin-bottom: 12px; font: inherit; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <button class="theme" type="button" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">Cambiar tema</button>
+  <section id="vigencias"></section>
+</main>
+<script type="module">
+  import { renderVigenciaTimeline } from '../src/vigencia-timeline/vigencia-timeline.js';
+  const { corte, data } = await (await fetch('./datos-ejemplo.json')).json();
+  renderVigenciaTimeline(document.getElementById('vigencias'), {
+    data, corte,
+    onRowClick: (r) => console.log('fila', r),
+  });
+</script>
+</body>
+</html>

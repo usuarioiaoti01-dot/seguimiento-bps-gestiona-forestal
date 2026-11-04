@@ -1,0 +1,75 @@
+/* OTI Visual — VigenciaTimeline. Requiere design-system/tokens.css. Clases con prefijo .vt- */
+
+.vt { --vt-hist-fill: color-mix(in srgb, var(--ink-muted) 20%, var(--surface)); --vt-hist-stroke: color-mix(in srgb, var(--ink-muted) 70%, var(--surface)); box-sizing: border-box; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); padding: var(--space-6); font-family: var(--font-sans); font-size: 14px; line-height: 20px; position: relative; }
+.vt *, .vt *::before, .vt *::after { box-sizing: border-box; }
+
+.vt-head { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); align-items: flex-start; justify-content: space-between; }
+.vt-title { margin: 0; font-size: 18px; line-height: 24px; font-weight: 650; }
+.vt-sub { margin: 2px 0 0; color: var(--ink-muted); }
+
+.vt-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius-pill); padding: 3px; gap: 2px; background: var(--surface-page); }
+.vt-seg button { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--ink-muted); padding: 6px 12px; border-radius: var(--radius-pill); cursor: pointer; white-space: nowrap; }
+.vt-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+.vt-seg button:focus-visible, .vt-tbl-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.vt-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-6) 0 var(--space-4); }
+.vt-kpi { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 14px; background: var(--surface); }
+.vt-kpi-n { font-size: 28px; line-height: 34px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; }
+.vt-kpi-t { font-weight: 600; font-size: 13px; }
+.vt-kpi-d { color: var(--ink-muted); font-size: 12px; line-height: 16px; margin-top: 2px; }
+.vt-kpi.is-critical { border-color: var(--risk); background: var(--risk-fill); }
+.vt-kpi.is-critical .vt-kpi-d { color: var(--risk-ink); }
+.vt-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.vt-dot-critical { background: var(--risk); } .vt-dot-warn { background: var(--warn); } .vt-dot-ok { background: var(--ok); } .vt-dot-none { background: var(--line-strong); }
+
+.vt-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--ink-muted); font-size: 12px; margin-bottom: var(--space-2); }
+.vt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.vt-sw { display: inline-block; width: 22px; height: 10px; border-radius: 3px; }
+.vt-sw-bar { background: var(--bar-fill); border: 1px solid var(--bar-stroke); }
+.vt-sw-pend { background: var(--pending-fill); border: 1px dashed var(--pending); }
+.vt-sw-gap { border: 1px solid var(--risk); background: repeating-linear-gradient(135deg, var(--risk) 0 1.5px, transparent 1.5px 5px); }
+.vt-sw-hist { background: var(--vt-hist-fill); border: 1px solid var(--vt-hist-stroke); }
+.vt-sw-hueco { background: var(--risk); border: 1px solid var(--risk); }
+.vt-sw-mk { width: 4px; height: 14px; background: var(--marker); border-radius: 2px; }
+.vt-sw-today { width: 2px; height: 14px; background: var(--today); border-radius: 0; }
+
+.vt-scroll { overflow-x: auto; margin: 0 calc(var(--space-2) * -1); }
+.vt-svg { display: block; min-width: 820px; width: 100%; height: auto; }
+.vt-svg text { font-family: var(--font-sans); pointer-events: none; }
+.vt-row-hit { fill: transparent; outline: none; }
+.vt-row-hit:hover, .vt-row-hit:focus-visible { fill: var(--surface-band); }
+.vt-t-month { fill: var(--ink); font-size: 11px; font-weight: 650; letter-spacing: .06em; }
+.vt-t-axis { fill: var(--ink-muted); font-size: 11px; font-weight: 500; }
+.vt-t-colhead { fill: var(--ink-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.vt-t-group { fill: var(--ink); font-size: 11px; font-weight: 650; letter-spacing: .06em; }
+.vt-t-alert { fill: var(--risk-ink); font-size: 12px; font-weight: 500; }
+.vt-t-code { fill: var(--ink); font-size: 13px; font-weight: 650; }
+.vt-t-note { fill: var(--ink-muted); font-size: 10px; font-weight: 500; }
+.vt-t-badge { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.vt-t-today { fill: var(--surface); font-size: 11px; font-weight: 650; }
+.vt-t-muted { fill: var(--ink-muted); font-size: 13px; }
+
+.vt-tip { position: fixed; pointer-events: none; z-index: 50; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-tooltip); padding: 10px 12px; font-size: 12px; line-height: 17px; min-width: 220px; opacity: 0; transition: opacity .08s; }
+.vt-tip.is-on { opacity: 1; }
+.vt-tip b { font-size: 13px; }
+.vt-tip dl { display: grid; grid-template-columns: auto auto; gap: 2px 14px; margin: 6px 0 0; }
+.vt-tip dt { color: var(--ink-muted); }
+.vt-tip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+.vt-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: var(--space-4); color: var(--ink-muted); font-size: 12px; }
+.vt-tbl-toggle { font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.vt-tbl table { width: 100%; border-collapse: collapse; margin-top: var(--space-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.vt-tbl th, .vt-tbl td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.vt-tbl th { color: var(--ink-muted); font-weight: 600; font-size: 12px; }
+
+/* BrechaBadge (HTML, fuera del SVG) */
+.badge-brecha { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); font-family: var(--font-sans); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badge-brecha.is-critical { background: var(--risk-fill); color: var(--risk-ink); }
+.badge-brecha.is-warn { background: var(--warn-fill); color: var(--warn-ink); }
+.badge-brecha.is-ok { background: var(--ok-fill); color: var(--ok-ink); }
+.badge-brecha.is-none { background: var(--neutral-fill); color: var(--ink-muted); }
+
+@media (max-width: 720px) {
+  .vt { padding: var(--space-4); }
+  .vt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
