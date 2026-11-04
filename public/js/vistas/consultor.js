@@ -1,8 +1,24 @@
-import { api, enviarConMotivo, estado, esc, ff, ffc, fh, pct, titulo, badge, semaforo, diasBadge, holguraBadge, barraAvance, dia, puede, aviso, fallo, modal, opciones, ETIQ } from '../util.js';
+import { api, enviarConMotivo, estado, esc, ff, ffc, fh, pct, titulo, badge, semaforo, diasBadge, holguraBadge, barraAvance, dia, puede, aviso, fallo, modal, opciones, pedirTexto, esProfesional, ETIQ } from '../util.js';
 import { abrirAsistente } from './asistente.js';
 
 const ESTADOS = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA'];
 const CLASIF = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
+const POR_PAGINA = 5; // actividades por página en el plan de trabajo
+const paginaActual = { consultor: null, n: 1 }; // sobrevive a "refrescar" tras editar una actividad
+
+/** Divide las actividades en páginas de POR_PAGINA; cada fila resumen viaja con las actividades que encabeza. */
+export function paginarActividades(acts) {
+  const paginas = [[]];
+  let n = 0; let resumenes = [];
+  for (const a of acts) {
+    if (a.es_resumen) { resumenes.push(a); continue; }
+    if (n === POR_PAGINA) { paginas.push([]); n = 0; }
+    paginas[paginas.length - 1].push(...resumenes, a);
+    resumenes = []; n += 1;
+  }
+  if (resumenes.length) paginas[paginas.length - 1].push(...resumenes);
+  return paginas;
+}
 
 export async function vistaConsultor(el, [id]) {
   const q = estado.corte ? `?corte=${estado.corte}` : '';
@@ -11,6 +27,10 @@ export async function vistaConsultor(el, [id]) {
   const editor = puede('EDITOR');
   titulo(c.nombres, `${esc(c.clave)} · ${esc(c.perfil || '')} · corte ${ff(d.corte)}`);
   const iniciales = c.nombres.split(' ').filter(Boolean).slice(0, 2).map((x) => x[0]).join('');
+  // Vigencia contractual: solo las adendas suscritas (concluidas y firmadas). Alertas: las dos primeras altas; el resto, en ventana emergente.
+  const suscritas = d.adendas.filter((a) => a.estado === 'CONCLUIDA' || a.estado === 'FIRMADA');
+  const htmlAlerta = (a) => `<div class="alerta">${badge(a.prioridad)}<div class="t">${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`;
+  const altasVisibles = d.alertas.filter((a) => a.prioridad === 'ALTA').slice(0, 2);
   const desvioPlan = p && p.fin_probable && p.fin_plan ? dia(p.fin_probable) - dia(p.fin_plan) : null;
 
   el.innerHTML = `
@@ -21,32 +41,32 @@ export async function vistaConsultor(el, [id]) {
       <div class="mut2">${esc(k.titulo_tdr || '')}${c.recurso_cronograma ? ` · Recurso en cronograma: ${esc(c.recurso_cronograma)}` : ''}</div></div></div>
     <div class="acciones">${badge(v.semaforo)}
       ${estado.ia ? '<button class="btn" id="b-ia">Preguntar al asistente</button>' : ''}
-      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}<a class="btn" href="#/">← Tablero</a></div>
-  </div>${c.observacion ? `<div class="cuerpo mut" style="border-top:1px solid var(--borde);padding-top:10px">${esc(c.observacion)}</div>` : ''}</div>
+      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : '<a class="btn" href="#/">← Gestión Adendas</a>'}</div>
+  </div></div>
 
   <div class="rejilla-2">
-    <div class="tarjeta"><div class="cab"><h2>Vigencia contractual</h2>${editor ? '<button class="btn peq prim" id="b-adenda">Registrar adenda</button>' : ''}</div>
+    <div class="tarjeta"><div class="cab"><h2>VIGENCIA CONTRACTUAL</h2>${editor ? '<button class="btn peq prim" id="b-adenda">Registrar adenda</button>' : ''}</div>
       <div class="cuerpo" style="display:grid;gap:14px">
         <div class="datos">
           <div class="dato"><small>Adenda vigente</small><b>${v.adenda_vigente ? `N.° ${String(v.adenda_vigente.numero).padStart(2, '0')}` : '—'}</b></div>
           <div class="dato"><small>Fin de vigencia</small><b class="num">${ff(v.fin_vigencia)}</b></div>
           <div class="dato"><small>Días restantes</small><b>${diasBadge(v.dias_restantes)}</b></div>
-          <div class="dato"><small>Holgura vs. término probable</small><b>${holguraBadge(v.holgura_dias)}</b></div>
-          <div class="dato"><small>Vigencia potencial</small><b class="num">${v.adenda_siguiente ? `${ff(v.fin_vigencia_potencial)} ${holguraBadge(v.holgura_potencial_dias)}` : '—'}</b></div>
         </div>
-        <div class="adendas">${d.adendas.map((a) => `<div class="adenda ${a.estado}" data-adenda="${a.adenda_id}" title="Clic para ver o editar">
+        <div class="adendas">${suscritas.map((a) => `<div class="adenda ${a.estado}" data-adenda="${a.adenda_id}" title="Clic para ver o editar">
           <div><b>Adenda N.° ${String(a.numero).padStart(2, '0')}</b> ${badge(a.estado)}</div>
           <div class="num mut">${ff(a.fecha_inicio)} – ${ff(a.fecha_fin)}</div>
-          <div class="mut2">${esc(a.documento_ref || 'Sin documento')}</div></div>`).join('') || '<span class="mut">Sin adendas registradas</span>'}</div>
+          ${a.plazo_dias ? `<div class="mut2">${a.plazo_dias} días${a.plazo_solicitado_dias && a.plazo_solicitado_dias !== a.plazo_dias ? ` (solicitados ${a.plazo_solicitado_dias})` : ''}</div>` : ''}
+          <div class="mut2">${esc(a.documento_ref || (a.estado === 'CONCLUIDA' ? 'Adenda concluida' : 'Sin documento'))}</div></div>`).join('') || '<span class="mut">Sin adendas suscritas</span>'}</div>
+        ${coberturaAdendas(d.cobertura)}
       </div></div>
-    <div class="tarjeta"><div class="cab"><h2>Alertas del profesional</h2></div><div class="cuerpo sin" style="max-height:260px;overflow:auto">
-      ${d.alertas.map((a) => `<div class="alerta">${badge(a.prioridad)}<div class="t">${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`).join('') || '<div class="vacio">Sin alertas</div>'}</div></div>
+    <div class="tarjeta"><div class="cab"><h2>ALERTAS DEL PROFESIONAL</h2>${d.alertas.length > altasVisibles.length ? `<button class="btn peq" id="b-alertas">Ver todas (${d.alertas.length})</button>` : ''}</div><div class="cuerpo sin">
+      ${altasVisibles.map(htmlAlerta).join('') || `<div class="vacio">${d.alertas.length ? 'Sin alertas altas' : 'Sin alertas'}</div>`}</div></div>
   </div>
 
   <div class="tarjeta">
     <div class="cab"><div><h2>${esc(d.plan ? d.plan.nombre : 'Sin plan de trabajo')}</h2>
       ${d.plan ? `<span class="mut2">${badge(d.plan.estado)} · ${esc(d.plan.fuente || '')} ${d.plan.fecha_recepcion ? ` · recibido ${ff(d.plan.fecha_recepcion)}` : ''} · días ${d.plan.tipo_dias === 'HABILES' ? 'hábiles' : 'calendario'}</span>` : ''}</div>
-      <div class="acciones">${d.plan && editor ? `
+      <div class="acciones">${d.plan && d.plan_pdf?.existe ? '<button class="btn peq prim" id="b-pdf">Ver plan aprobado (PDF)</button>' : ''}${d.plan && editor ? `<button class="btn peq" id="b-pdf-adjuntar">${d.plan_pdf?.existe ? 'Reemplazar PDF' : 'Adjuntar plan (PDF)'}</button><input type="file" id="f-pdf" accept="application/pdf" hidden>` : ''}${d.plan ? '<button class="btn peq" id="b-lb">Línea base 2026</button>' : ''}${d.plan && editor ? `
         <button class="btn peq" id="b-plan">Editar plan</button>
         <button class="btn peq" id="b-simular">Simular</button>
         <button class="btn peq" id="b-adoptar" title="Convierte las fechas probables en las nuevas fechas del plan (reprogramación formal con motivo)">Adoptar fechas probables</button>
@@ -56,26 +76,20 @@ export async function vistaConsultor(el, [id]) {
       <div class="dato"><small>Fin del plan</small><b class="num">${ff(p.fin_plan)}</b></div>
       <div class="dato"><small>Término probable</small><b class="num">${ff(p.fin_probable)} ${desvioPlan ? `<span class="badge ${desvioPlan > 0 ? 'b-rojo' : 'b-verde'}">${desvioPlan > 0 ? '+' : ''}${desvioPlan} d</span>` : ''}</b></div>
       <div class="dato"><small>Avance real / esperado</small>${barraAvance(p.avance_ponderado, p.avance_esperado)}</div>
-      <div class="dato"><small>SPI (índice de cronograma)</small><b class="num ${p.spi !== null && p.spi < 0.9 ? 'bad' : ''}">${p.spi ?? '—'}</b></div>
       <div class="dato"><small>Actividades</small><b class="num">${p.numero_actividades}</b></div>
     </div></div>` : ''}
     <div class="cuerpo" style="border-top:1px solid var(--borde);padding-top:10px"><div class="leyenda">
       <span><i style="border:1.5px solid var(--borde-fuerte);background:var(--superficie-2)"></i>Plan formulado</span>
       <span><i style="background:var(--azul)"></i>Probable en plazo</span><span><i style="background:var(--rojo)"></i>Atrasada</span><span><i style="background:var(--verde)"></i>Concluida</span>
-      <span><i style="border-left:2px dashed var(--azul);width:2px;height:12px"></i>Corte</span><span><i style="border-left:2px dashed var(--rojo);width:2px;height:12px"></i>Fin de vigencia</span><span><i style="border-left:2px dashed var(--ambar);width:2px;height:12px"></i>Vigencia potencial</span>
+      <span><i style="border-left:2px dashed var(--azul);width:2px;height:12px"></i>Corte</span><span><i style="border-left:2px dashed var(--rojo);width:2px;height:12px"></i>Fin de vigencia</span>
       <span class="critica">◆</span> ruta crítica</div></div>
     <div class="cuerpo sin tabla-env" id="tabla-act"></div>
   </div>
 
   <div class="rejilla-2">
-    <div class="tarjeta"><div class="cab"><h2>Línea base 2026 (entregables asignados)</h2></div><div class="cuerpo sin tabla-env"><table>
-      <thead><tr><th>EDT</th><th>Entregable</th><th>Fin LB</th><th class="d">Avance al corte LB</th><th>Cobertura</th><th>Situación</th></tr></thead>
-      <tbody>${d.linea_base.map((e) => `<tr><td class="num">${esc(e.edt)}</td><td class="desc">${esc(e.nombre)}${e.actividades.length ? `<small>Actividades: ${e.actividades.map(esc).join(', ')}</small>` : ''}</td><td class="num">${ff(e.fin_lb)}</td><td class="d num">${pct(e.avance_corte)}</td><td>${badge(e.cobertura)}</td><td class="mut2">${esc(e.situacion || '')}${e.situacion_oti ? `<br><b>OTI:</b> ${esc(e.situacion_oti)}` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin entregables</td></tr>'}</tbody></table></div></div>
-    <div style="display:grid;gap:18px;align-content:start">
-      <div class="tarjeta"><div class="cab"><h2>Actas de control de cambios</h2>${editor ? '<button class="btn peq" id="b-cc">Registrar acta</button>' : ''}</div><div class="cuerpo sin">
+    <div class="tarjeta"><div class="cab"><h2>Actas de control de cambios</h2>${editor ? '<button class="btn peq" id="b-cc">Registrar acta</button>' : ''}</div><div class="cuerpo sin">
         ${d.controles_cambio.map((x) => `<div class="alerta" data-cc="${x.control_cambio_id}" style="cursor:pointer">${badge(x.estado)}<div class="t">${esc(x.titulo)}</div><div class="d">${ff(x.fecha)} · ${esc(x.documento_ref || '')}</div></div>`).join('') || '<div class="vacio">Sin actas</div>'}</div></div>
-      <div class="tarjeta"><div class="cab"><h2>Evolución del término probable</h2></div><div class="cuerpo">${evolucion(d.historial_pronostico)}</div></div>
-    </div>
+    <div class="tarjeta"><div class="cab"><h2>Evolución del término probable</h2></div><div class="cuerpo">${evolucion(d.historial_pronostico)}</div></div>
   </div>
 
   <div class="tarjeta"><div class="cab"><h2>Últimos cambios</h2><a class="btn peq" href="#/bitacora">Ver bitácora completa</a></div><div class="cuerpo sin tabla-env"><table>
@@ -111,7 +125,6 @@ function pintarActividades(cont, d, editor) {
   const fechas = [d.corte];
   for (const a of acts) { fechas.push(a.inicio_plan, a.fin_plan); if (a.pronostico) fechas.push(a.pronostico.inicio_probable, a.pronostico.fin_probable); }
   if (v.fin_vigencia) fechas.push(v.fin_vigencia);
-  if (v.fin_vigencia_potencial) fechas.push(v.fin_vigencia_potencial);
   const d0 = Math.min(...fechas.filter(Boolean).map(dia)) - 1;
   const d1 = Math.max(...fechas.filter(Boolean).map(dia)) + 2;
   const x = (f) => ((dia(f) - d0) / (d1 - d0)) * 100;
@@ -120,33 +133,47 @@ function pintarActividades(cont, d, editor) {
   const rango = d1 - d0;
   const patron = rango <= 45 ? /-(01|08|15|22)$/ : rango <= 120 ? /-(01|15)$/ : /-01$/;
   for (let n = d0; n <= d1; n += 1) { const f = new Date(n * 86400000).toISOString().slice(0, 10); if (patron.test(f)) marcas.push(f); }
-  const lineas = `<div class="linea corte" style="left:${x(d.corte)}%"></div>${v.fin_vigencia ? `<div class="linea vig" style="left:${x(v.fin_vigencia)}%"></div>` : ''}${v.fin_vigencia_potencial ? `<div class="linea pot" style="left:${x(v.fin_vigencia_potencial)}%"></div>` : ''}`;
+  const lineas = `<div class="linea corte" style="left:${x(d.corte)}%"></div>${v.fin_vigencia ? `<div class="linea vig" style="left:${x(v.fin_vigencia)}%"></div>` : ''}`;
+
+  const paginas = paginarActividades(acts);
+  if (paginaActual.consultor !== d.consultor.consultor_id) { paginaActual.consultor = d.consultor.consultor_id; paginaActual.n = 1; }
+  paginaActual.n = Math.min(Math.max(paginaActual.n, 1), paginas.length);
+  const total = acts.filter((a) => !a.es_resumen).length;
+  const desde = paginas.slice(0, paginaActual.n - 1).reduce((s, pg) => s + pg.filter((a) => !a.es_resumen).length, 0);
+  const enPagina = paginas[paginaActual.n - 1];
+  const hasta = desde + enPagina.filter((a) => !a.es_resumen).length;
+  const paginador = paginas.length > 1 ? `<div class="paginador"><span class="mut2">Actividades ${desde + 1}–${hasta} de ${total}</span><div class="acciones">
+    <button type="button" class="btn peq" data-pag="${paginaActual.n - 1}" ${paginaActual.n === 1 ? 'disabled' : ''}>Anterior</button>
+    ${paginas.map((_, i) => `<button type="button" class="btn peq ${i + 1 === paginaActual.n ? 'prim' : ''}" data-pag="${i + 1}" aria-label="Página ${i + 1}" ${i + 1 === paginaActual.n ? 'aria-current="page"' : ''}>${i + 1}</button>`).join('')}
+    <button type="button" class="btn peq" data-pag="${paginaActual.n + 1}" ${paginaActual.n === paginas.length ? 'disabled' : ''}>Siguiente</button></div></div>` : '';
 
   cont.innerHTML = `<table><thead><tr><th>N.°</th><th>Actividad</th><th>Fechas</th><th>Avance</th><th>Estado</th><th>Término probable</th><th style="min-width:380px;width:34%"><div class="gantt-cab">${marcas.map((m) => `<span style="left:${x(m)}%">${ffc(m)}</span>`).join('')}</div></th><th></th></tr></thead>
-  <tbody>${acts.map((a) => {
+  <tbody>${enPagina.map((a) => {
     const pr = a.pronostico || {};
     const res = a.es_resumen;
     const anul = a.estado === 'ANULADA';
     const editable = editor && !res && !anul;
+    const editaEstado = (editor || esProfesional()) && !res && !anul; // el Profesional solo cambia el estado (y el avance en «Editar»)
     return `<tr class="${res ? 'resumen' : ''} ${anul ? 'anulada' : ''}" data-act="${a.actividad_id}">
       <td class="num">${pr.critica ? '<span class="critica" title="Ruta crítica">◆</span> ' : ''}${esc(a.numero)}</td>
       <td class="desc">${esc(a.descripcion)}<small>${badge(a.clasificacion)} ${a.edt_ref ? esc(a.edt_ref) : ''}${a.es_hito ? ' · hito' : ''}${a.predecesoras.length ? ` · depende de ${a.predecesoras.map((p) => esc((acts.find((y) => y.actividad_id === p.predecesora_id) || {}).numero || p.predecesora_id)).join(', ')}` : ''}</small></td>
       <td class="num" style="white-space:nowrap"><span class="mut2">Plan</span> ${ffc(a.inicio_plan)}–${ffc(a.fin_plan)}<br><span class="mut2">Real</span> ${a.inicio_real || a.fin_real ? `${a.inicio_real ? ffc(a.inicio_real) : '…'}–${a.fin_real ? ffc(a.fin_real) : '…'}` : '<span class="mut2">sin registro</span>'}</td>
       <td>${editable ? `<input class="en-linea num" type="number" min="0" max="100" step="5" value="${Number(a.avance)}" data-campo="avance" aria-label="Avance %">` : `<span class="num">${pct(a.avance)}</span>`}</td>
-      <td>${editable ? `<select class="en-linea" data-campo="estado" aria-label="Estado">${opciones(ESTADOS.map((s) => [s, ETIQ[s][0]]), a.estado)}</select>` : badge(a.estado)}</td>
+      <td>${editaEstado ? `<select class="en-linea" data-campo="estado" aria-label="Estado">${opciones(ESTADOS.map((s) => [s, ETIQ[s][0]]), a.estado)}</select>` : badge(a.estado)}</td>
       <td class="num">${pr.fin_probable ? `<b>${ff(pr.fin_probable)}</b><br>${pr.desvio_dias ? `<span class="badge ${pr.desvio_dias > 0 ? 'b-rojo' : 'b-verde'}">${pr.desvio_dias > 0 ? '+' : ''}${pr.desvio_dias} d</span>` : ''} ${pr.situacion && pr.situacion !== 'EN_PLAZO' && pr.situacion !== 'PROGRAMADA' ? badge(pr.situacion) : ''}` : '—'}</td>
       <td><div class="gantt">${lineas}
         <div class="plan" style="left:${x(a.inicio_plan)}%;width:${w(a.inicio_plan, a.fin_plan)}%" title="Plan: ${ff(a.inicio_plan)} – ${ff(a.fin_plan)}"></div>
         ${pr.inicio_probable ? `<div class="prob ${esc(pr.situacion)}" style="left:${x(pr.inicio_probable)}%;width:${w(pr.inicio_probable, pr.fin_probable)}%" title="Probable: ${ff(pr.inicio_probable)} – ${ff(pr.fin_probable)}"><div class="lleno" style="width:${Number(a.avance)}%"></div></div>` : ''}</div></td>
-      <td>${!res && !anul ? `<button class="btn peq" data-editar="${a.actividad_id}">${editor ? 'Editar' : 'Ver'}</button>` : ''}</td></tr>`;
-  }).join('')}</tbody></table>`;
+      <td>${!res && !anul ? `<button class="btn peq" data-editar="${a.actividad_id}">${editor || esProfesional() ? 'Editar' : 'Ver'}</button>` : ''}</td></tr>`;
+  }).join('')}</tbody></table>${paginador}`;
+  cont.querySelectorAll('[data-pag]').forEach((b) => { b.onclick = () => { paginaActual.n = Number(b.dataset.pag); pintarActividades(cont, d, editor); }; });
+  conectarActividades(cont, d, editor);
 }
 
-function conectar(el, d, editor) {
-  const refrescar = () => window.sgfRefrescar();
+/** Avance, estado y "Editar" de las filas de la página que se está mostrando. */
+function conectarActividades(cont, d, editor) {
   const act = (id) => d.actividades.find((a) => a.actividad_id === Number(id));
-
-  el.querySelectorAll('[data-campo]').forEach((inp) => {
+  cont.querySelectorAll('[data-campo]').forEach((inp) => {
     inp.onchange = async () => {
       if (inp.disabled) return;
       inp.disabled = true;
@@ -155,16 +182,27 @@ function conectar(el, d, editor) {
       try {
         const r = await enviarConMotivo('PATCH', `/actividades/${a.actividad_id}`, { [inp.dataset.campo]: valor, revision: a.revision });
         aviso(`Actividad ${a.numero} actualizada · pronóstico recalculado${r.finRealAsumido ? `. Fin real asumido: ${ff(r.fila.fin_real)} (corríjalo con «Editar» si fue otra fecha)` : ''}`, 'exito');
-        refrescar();
-      } catch (err) { inp.disabled = false; fallo(err); if (err.estado === 409 || err.cancelado) refrescar(); }
+        window.sgfRefrescar();
+      } catch (err) { inp.disabled = false; fallo(err); if (err.estado === 409 || err.cancelado) window.sgfRefrescar(); }
     };
   });
-  el.querySelectorAll('[data-editar]').forEach((b) => { b.onclick = () => editarActividad(act(b.dataset.editar), d, editor); });
+  cont.querySelectorAll('[data-editar]').forEach((b) => { b.onclick = () => editarActividad(act(b.dataset.editar), d, editor); });
+}
+
+function conectar(el, d, editor) {
+  const refrescar = () => window.sgfRefrescar();
+  const act = (id) => d.actividades.find((a) => a.actividad_id === Number(id));
   el.querySelectorAll('[data-adenda]').forEach((x) => { x.onclick = () => editarAdenda(d.adendas.find((a) => a.adenda_id === Number(x.dataset.adenda)), d, editor); });
   el.querySelectorAll('[data-cc]').forEach((x) => { x.onclick = () => editarControlCambio(d.controles_cambio.find((a) => a.control_cambio_id === Number(x.dataset.cc)), d, editor); });
   const on = (sel, fn) => { const b = el.querySelector(sel); if (b) b.onclick = fn; };
   on('#b-ia', () => abrirAsistente({ consultor_id: d.consultor.consultor_id, texto: `Analiza la situación de ${d.consultor.nombres}: vigencia, término probable, actividades críticas y qué debo hacer esta semana.` }));
   on('#b-adenda', () => editarAdenda(null, d, editor));
+  on('#b-alertas', () => verAlertas(d));
+  on('#b-lb', () => verLineaBase(d));
+  on('#b-pdf', () => verPlanPdf(d));
+  on('#b-pdf-adjuntar', () => el.querySelector('#f-pdf').click());
+  const f = el.querySelector('#f-pdf');
+  if (f) f.onchange = () => { const arch = f.files[0]; f.value = ''; if (arch) adjuntarPlanPdf(d, arch); };
   on('#b-cc', () => editarControlCambio(null, d, editor));
   on('#b-nueva', () => editarActividad(null, d, editor));
   on('#b-plan', () => editarPlan(d));
@@ -178,12 +216,56 @@ function conectar(el, d, editor) {
   });
 }
 
+/** Todas las alertas del profesional (las dos altas de la tarjeta y el resto) en una ventana emergente. */
+function verAlertas(d) {
+  modal({
+    titulo: `ALERTAS DEL PROFESIONAL (${d.alertas.length})`, ancho: 820, botones: [],
+    contenido: `<div style="max-height:65vh;overflow:auto">${d.alertas.map((a) => `<div class="alerta">${badge(a.prioridad)}<div class="t">${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`).join('')}</div>`,
+  });
+}
+
+/** Visor del PDF del plan aprobado (iframe del mismo origen; si el navegador no lo muestra, se ofrece abrirlo aparte). */
+function verPlanPdf(d) {
+  const url = `/api/planes/${d.plan.plan_id}/pdf`;
+  modal({
+    titulo: `Plan aprobado · ${d.plan.nombre}`, ancho: 1100, botones: [],
+    contenido: `<iframe src="${url}" title="Plan de trabajo aprobado (PDF)" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
+      <div class="mut2">Si el visor no se muestra, <a href="${url}" target="_blank" rel="noopener">abra el PDF en una pestaña nueva</a>.</div>`,
+  });
+}
+
+/** Adjunta (o reemplaza) el PDF del plan aprobado; el motivo queda en la bitácora. */
+async function adjuntarPlanPdf(d, archivo) {
+  if (archivo.type !== 'application/pdf' && !/\.pdf$/i.test(archivo.name)) { aviso('Seleccione un archivo PDF', 'error'); return; }
+  if (archivo.size > 15 * 1024 * 1024) { aviso('El PDF supera el máximo de 15 MB', 'error'); return; }
+  const motivo = await pedirTexto(d.plan_pdf?.existe ? 'Reemplazar el PDF del plan' : 'Adjuntar el PDF del plan', `Se adjuntará «${archivo.name}» al plan «${d.plan.nombre}». La versión anterior, si existe, se conserva.`, 'Ej.: Plan aprobado con la conformidad de la OTI del 05/11/2026');
+  if (!motivo) return;
+  try {
+    const r = await fetch(`/api/planes/${d.plan.plan_id}/pdf`, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo) }, body: archivo, credentials: 'same-origin' });
+    const datos = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
+    aviso('PDF del plan guardado', 'exito'); window.sgfRefrescar();
+  } catch (err) { fallo(err); }
+}
+
+/** Línea base 2026 (entregables asignados) en ventana emergente. */
+function verLineaBase(d) {
+  modal({
+    titulo: 'Línea base 2026 (entregables asignados)', ancho: 1100, botones: [],
+    contenido: `<div class="tabla-env" style="max-height:70vh;overflow:auto"><table>
+      <thead><tr><th>EDT</th><th>Entregable</th><th>Fin LB</th><th class="d">Avance al corte LB</th><th>Cobertura</th><th>Situación</th></tr></thead>
+      <tbody>${d.linea_base.map((e) => `<tr><td class="num">${esc(e.edt)}</td><td class="desc">${esc(e.nombre)}${e.actividades.length ? `<small>Actividades: ${e.actividades.map(esc).join(', ')}</small>` : ''}</td><td class="num">${ff(e.fin_lb)}</td><td class="d num">${pct(e.avance_corte)}</td><td>${badge(e.cobertura)}</td><td class="mut2">${esc(e.situacion || '')}${e.situacion_oti ? `<br><b>OTI:</b> ${esc(e.situacion_oti)}` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin entregables</td></tr>'}</tbody></table></div>`,
+  });
+}
+
 async function editarActividad(a, d, editor) {
   const nueva = !a;
   a = a || { numero: '', descripcion: '', producto: '', edt_ref: '', clasificacion: 'ALINEADA', inicio_plan: d.corte, fin_plan: d.corte, avance: 0, estado: 'PENDIENTE', es_hito: 0, predecesoras: [] };
   const otras = d.actividades.filter((x) => x.actividad_id !== a.actividad_id && !x.es_resumen && x.estado !== 'ANULADA');
   const preds = new Map((a.predecesoras || []).map((p) => [p.predecesora_id, p.desfase_dias]));
   const dis = editor ? '' : 'disabled';
+  const prof = esProfesional(); // solo puede cambiar el avance
+  const disAvance = editor || prof ? '' : 'disabled';
   const r = await modal({
     titulo: nueva ? 'Agregar actividad al plan' : `Actividad ${a.numero}`,
     ancho: 820,
@@ -201,7 +283,7 @@ async function editarActividad(a, d, editor) {
       ${nueva ? '' : `
       <div class="campo"><label>Inicio real</label><input type="date" name="inicio_real" value="${esc(a.inicio_real || '')}" ${dis}></div>
       <div class="campo"><label>Fin real</label><input type="date" name="fin_real" value="${esc(a.fin_real || '')}" ${dis}></div>
-      <div class="campo"><label>Avance %</label><input type="number" min="0" max="100" name="avance" value="${Number(a.avance)}" ${dis}></div>
+      <div class="campo"><label>Avance %</label><input type="number" min="0" max="100" name="avance" value="${Number(a.avance)}" ${disAvance}></div>
       <div class="campo"><label>Estado</label><select name="estado" ${dis}>${opciones(ESTADOS.map((s) => [s, ETIQ[s][0]]), a.estado)}</select></div>
       <div class="campo"><label>Fecha de revisión OTI</label><input type="date" name="fecha_revision" value="${esc(a.fecha_revision || '')}" ${dis}></div>
       <div class="campo ancho"><label>Evidencia verificada</label><input name="evidencia" value="${esc(a.evidencia || '')}" placeholder="Ej.: Acta de presentación del 12/11; merge request !245" ${dis}></div>
@@ -213,13 +295,20 @@ async function editarActividad(a, d, editor) {
           <input type="number" class="en-linea" data-desfase="${o.actividad_id}" value="${preds.get(o.actividad_id) ?? 0}" ${dis}></div>`).join('') || '<span class="mut2">No hay otras actividades</span>'}</div></div>
       ${editor ? '<div class="campo ancho"><label>Motivo del cambio (obligatorio si cambia las fechas del plan)</label><input name="motivo" placeholder="Ej.: Reprogramación aprobada en reunión de seguimiento del 05/11"></div>' : ''}
     </div>`,
-    botones: editor ? [
+    botones: prof ? [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar avance', clase: 'prim', valor: 'avance' }] : editor ? [
       ...(nueva ? [] : [{ texto: 'Historial', valor: 'historial' }, { texto: 'Anular', clase: 'peligro', valor: 'anular' }]),
       { texto: 'Cancelar', valor: null }, { texto: 'Guardar', clase: 'prim', valor: 'guardar' },
     ] : [{ texto: 'Historial', valor: 'historial' }, { texto: 'Cerrar', valor: null }],
   });
   if (!r.valor) return;
   if (r.valor === 'historial') return verHistorial('actividad', a.actividad_id, `Historial de la actividad ${a.numero}`);
+  if (r.valor === 'avance') { // Profesional: solo el avance; el servidor rechaza cualquier otro campo
+    try {
+      await api('PATCH', `/actividades/${a.actividad_id}`, { avance: Number(r.datos.avance), revision: a.revision });
+      aviso('Avance guardado · pronóstico recalculado', 'exito'); window.sgfRefrescar();
+    } catch (err) { fallo(err); if (err.estado === 409) window.sgfRefrescar(); }
+    return;
+  }
   try {
     if (r.valor === 'anular') {
       await enviarConMotivo('POST', `/actividades/${a.actividad_id}/anular`, { motivo: r.datos.motivo }, 'Motivo de la anulación');
@@ -242,6 +331,17 @@ async function editarActividad(a, d, editor) {
   } catch (err) { fallo(err); }
 }
 
+/** Resumen de la cobertura entre adendas: días sin cobertura (rojo) e inconsistencias por superposición. */
+function coberturaAdendas(c) {
+  if (!c || !c.tramos.length) return '';
+  const rojo = (t) => `<div class="mut" style="color:var(--rojo)">▲ ${t}</div>`;
+  const lineas = [
+    ...c.brechas.map((t) => rojo(`${t.dias} día(s) sin cobertura entre la Adenda ${String(t.anterior).padStart(2, '0')} y la ${String(t.siguiente).padStart(2, '0')} (${ff(t.desde)} – ${ff(t.hasta)})`)),
+    ...c.superposiciones.map((t) => `<div class="mut" style="color:var(--ambar)">● Inconsistencia: las Adendas ${String(t.anterior).padStart(2, '0')} y ${String(t.siguiente).padStart(2, '0')} se superponen ${t.dias} día(s) (${ff(t.desde)} – ${ff(t.hasta)})</div>`),
+  ];
+  return `<div>${lineas.join('') || '<div class="mut2">Vigencias contiguas: sin días sin cobertura entre adendas.</div>'}</div>`;
+}
+
 async function editarAdenda(a, d, editor) {
   const nueva = !a;
   const ultima = d.adendas[d.adendas.length - 1];
@@ -251,10 +351,12 @@ async function editarAdenda(a, d, editor) {
     titulo: nueva ? 'Registrar adenda' : `Adenda N.° ${String(a.numero).padStart(2, '0')}`,
     contenido: `<div class="form">
       <div class="campo"><label>N.° de adenda</label><input type="number" name="numero" value="${esc(a.numero)}" ${dis}></div>
-      <div class="campo"><label>Estado</label><select name="estado" ${dis}>${opciones([['ANUNCIADA', 'Anunciada (sin documento)'], ['EN_TRAMITE', 'En trámite'], ['FIRMADA', 'Firmada'], ['ANULADA', 'Anulada']], a.estado)}</select></div>
+      <div class="campo"><label>Estado</label><select name="estado" ${dis}>${opciones([['ANUNCIADA', 'Anunciada (sin documento)'], ['EN_TRAMITE', 'En trámite'], ['FIRMADA', 'Firmada'], ['CONCLUIDA', 'Concluida'], ['ANULADA', 'Anulada']], a.estado)}</select></div>
       <div class="campo"><label>Inicio</label><input type="date" name="fecha_inicio" value="${esc(a.fecha_inicio || '')}" ${dis}></div>
       <div class="campo"><label>Fin</label><input type="date" name="fecha_fin" value="${esc(a.fecha_fin || '')}" ${dis}></div>
       <div class="campo"><label>Fecha de suscripción</label><input type="date" name="fecha_suscripcion" value="${esc(a.fecha_suscripcion || '')}" ${dis}></div>
+      <div class="campo"><label>Plazo otorgado (días)</label><input type="number" min="1" name="plazo_dias" value="${esc(a.plazo_dias ?? '')}" ${dis}></div>
+      <div class="campo"><label>Plazo solicitado (días)</label><input type="number" min="1" name="plazo_solicitado_dias" value="${esc(a.plazo_solicitado_dias ?? '')}" ${dis}></div>
       <div class="campo"><label>Expediente</label><input name="expediente" value="${esc(a.expediente || '')}" ${dis}></div>
       <div class="campo ancho"><label>Documento (obligatorio si está firmada)</label><input name="documento_ref" value="${esc(a.documento_ref || '')}" placeholder="Adenda N.° 04 al Contrato N.° 039-2026-MIDAGRI-SERFOR-PKFW" ${dis}></div>
       <div class="campo ancho"><label>Observación</label><textarea name="observacion" ${dis}>${esc(a.observacion || '')}</textarea></div>

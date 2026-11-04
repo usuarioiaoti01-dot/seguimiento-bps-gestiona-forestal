@@ -3,7 +3,7 @@
  * Utilidad de base de datos (usa las credenciales SQL_* del .env).
  *
  *   npm run bd:probar     -> prueba la conexión y verifica requisitos
- *   npm run bd:instalar   -> ejecuta db/01 a db/05 en orden (solo sobre una base sin el esquema sgf)
+ *   npm run bd:instalar   -> ejecuta db/01 a db/07 en orden (06 y 07 antes de la verificación 05) (solo sobre una base sin el esquema sgf)
  */
 const fs = require('fs');
 const path = require('path');
@@ -12,7 +12,7 @@ const config = require('../server/config');
 
 const c = config.sqlserver;
 const DB = path.join(config.raiz, 'db');
-const ORDEN = ['01_esquema.sql', '02_vistas.sql', '03_seguridad.sql', '04_datos_iniciales.sql', '05_verificacion.sql'];
+const ORDEN = ['01_esquema.sql', '02_vistas.sql', '03_seguridad.sql', '04_datos_iniciales.sql', '06_historial_adendas.sql', '07_perfiles_usuario.sql', '05_verificacion.sql'];
 
 async function conectar() {
   const faltan = ['servidor', 'base', 'usuario', 'clave'].filter((k) => !c[k]);

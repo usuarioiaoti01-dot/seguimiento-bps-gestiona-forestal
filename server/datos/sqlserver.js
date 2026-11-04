@@ -240,31 +240,31 @@ async function crearRepositorioSqlServer(config) {
       return r.recordset.length ? normalizar(r.recordset[0], SIN_FECHAS) : null;
     },
     async listarUsuarios() {
-      const r = await consulta('SELECT usuario_id, correo, nombre, rol, debe_cambiar_clave, activo, creado_en, ultimo_acceso FROM sgf.usuario ORDER BY nombre;');
+      const r = await consulta('SELECT usuario_id, correo, nombre, rol, consultor_id, debe_cambiar_clave, activo, creado_en, ultimo_acceso FROM sgf.usuario ORDER BY nombre;');
       return normalizarTodas(r.recordset, SIN_FECHAS);
     },
     async crearUsuario(u) {
       try {
         const r = await consulta(
-          `INSERT INTO sgf.usuario (correo, nombre, rol, clave_hash, debe_cambiar_clave)
-           OUTPUT INSERTED.usuario_id, INSERTED.correo, INSERTED.nombre, INSERTED.rol, INSERTED.activo, INSERTED.debe_cambiar_clave
-           VALUES (@correo, @nombre, @rol, @clave_hash, @debe_cambiar_clave);`,
-          { correo: u.correo, nombre: u.nombre, rol: u.rol, clave_hash: u.clave_hash, debe_cambiar_clave: u.debe_cambiar_clave ?? 1 });
+          `INSERT INTO sgf.usuario (correo, nombre, rol, consultor_id, clave_hash, debe_cambiar_clave)
+           OUTPUT INSERTED.usuario_id, INSERTED.correo, INSERTED.nombre, INSERTED.rol, INSERTED.consultor_id, INSERTED.activo, INSERTED.debe_cambiar_clave
+           VALUES (@correo, @nombre, @rol, @consultor_id, @clave_hash, @debe_cambiar_clave);`,
+          { correo: u.correo, nombre: u.nombre, rol: u.rol, consultor_id: u.consultor_id ?? null, clave_hash: u.clave_hash, debe_cambiar_clave: u.debe_cambiar_clave ?? 1 });
         return normalizar(r.recordset[0], SIN_FECHAS);
       } catch (err) {
-        if (err.number === 2627 || err.number === 2601) throw Object.assign(new Error('Ya existe un usuario con ese correo'), { estado: 409 });
+        if (err.number === 2627 || err.number === 2601) throw Object.assign(new Error(/consultor/i.test(err.message) ? 'Ese profesional ya tiene una cuenta' : 'Ya existe un usuario con ese correo'), { estado: 409 });
         throw err;
       }
     },
     async actualizarUsuario(id, cambios) {
-      const permitidas = ['nombre', 'rol', 'clave_hash', 'debe_cambiar_clave', 'activo', 'ultimo_acceso'];
+      const permitidas = ['nombre', 'rol', 'consultor_id', 'clave_hash', 'debe_cambiar_clave', 'activo', 'ultimo_acceso'];
       const cols = Object.keys(cambios).filter((c) => permitidas.includes(c));
       if (!cols.length) return this.buscarUsuarioId(id);
       const params = Object.fromEntries(cols.map((c) => [c, cambios[c]]));
       params.__id = Number(id);
       const r = await consulta(
         `UPDATE sgf.usuario SET ${cols.map((c) => `${c} = @${c}`).join(', ')}
-         OUTPUT INSERTED.usuario_id, INSERTED.correo, INSERTED.nombre, INSERTED.rol, INSERTED.activo, INSERTED.debe_cambiar_clave
+         OUTPUT INSERTED.usuario_id, INSERTED.correo, INSERTED.nombre, INSERTED.rol, INSERTED.consultor_id, INSERTED.activo, INSERTED.debe_cambiar_clave
          WHERE usuario_id = @__id;`, params);
       if (!r.recordset.length) throw Object.assign(new Error('Usuario no encontrado'), { estado: 404 });
       return normalizar(r.recordset[0], SIN_FECHAS);

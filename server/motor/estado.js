@@ -7,6 +7,7 @@
  */
 const { aDia } = require('./calendario');
 const { recalcularPlan, evaluarVigencia } = require('./recalculo');
+const { analizarCobertura } = require('./cobertura');
 
 function parametro(datos, codigo, defecto) {
   const p = (datos.parametros || []).find((x) => x.codigo === codigo);
@@ -34,7 +35,7 @@ function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbr
       : null;
     const vigencia = evaluarVigencia({ adendas, pronostico: pronostico && pronostico.numero_actividades ? pronostico : null, corte, umbralHolgura });
     const lb = datos.linea_base.filter((e) => e.consultor_id === c.consultor_id && e.activo !== 0 && e.activo !== false);
-    resultado.push({ consultor: c, contrato, adendas, plan, actividades, pronostico, vigencia, linea_base: lb });
+    resultado.push({ consultor: c, contrato, adendas, plan, actividades, pronostico, vigencia, cobertura: analizarCobertura(adendas), linea_base: lb });
   }
 
   const alertas = generarAlertas(resultado, datos, { corte, umbralVigencia, umbralHolgura });
@@ -68,6 +69,17 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
       add(sig && sig.estado === 'EN_TRAMITE' ? 'MEDIA' : 'ALTA', 'VIGENCIA_POR_VENCER', it, `Vigencia vence en ${v.dias_restantes} días`,
         `Fin de vigencia: ${ff(v.fin_vigencia)}.` + (sig ? ` Adenda N.° ${sig.numero} ${sig.estado === 'ANUNCIADA' ? 'anunciada, sin documento' : 'en trámite'} hasta el ${ff(sig.fecha_fin)}.` : ' No hay adenda posterior registrada.'),
         sig ? 'Hacer seguimiento a BPS y solicitar el plan de trabajo del nuevo periodo.' : 'Definir continuidad del servicio o el cierre ordenado de entregables.');
+    }
+    // Cobertura histórica entre adendas confirmadas (concluidas y firmadas)
+    for (const t of it.cobertura.brechas) {
+      add('ALTA', 'ADENDAS_SIN_COBERTURA', it, `${t.dias} día(s) sin cobertura entre las Adendas N.° ${t.anterior} y N.° ${t.siguiente}`,
+        `Sin vigencia contractual del ${ff(t.desde)} al ${ff(t.hasta)}.`,
+        'Verificar las fechas de las adendas y no otorgar conformidades por ese periodo sin sustento.');
+    }
+    for (const t of it.cobertura.superposiciones) {
+      add('MEDIA', 'ADENDAS_SUPERPUESTAS', it, `Inconsistencia: las Adendas N.° ${t.anterior} y N.° ${t.siguiente} se superponen ${t.dias} día(s)`,
+        `Ambas vigencias cubren del ${ff(t.desde)} al ${ff(t.hasta)}.`,
+        'Corregir el inicio o el fin de la adenda que corresponda (con el documento de sustento).');
     }
     // Plan vs vigencia
     if (it.plan && it.plan.estado === 'POR_REGISTRAR') {

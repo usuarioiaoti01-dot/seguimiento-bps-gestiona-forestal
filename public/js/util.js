@@ -42,7 +42,11 @@ export const ffc = (s) => { if (!s) return '—'; const [, m, d] = String(s).sli
 export const fh = (s) => { if (!s) return '—'; const d = new Date(s); return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }); };
 export const pct = (n) => (n === null || n === undefined ? '—' : `${Math.round(Number(n) * 10) / 10} %`);
 export const dia = (s) => Math.round(Date.parse(`${String(s).slice(0, 10)}T00:00:00Z`) / 86400000);
-export const puede = (rol) => ({ LECTOR: 1, EDITOR: 2, ADMIN: 3 }[estado.usuario?.rol] || 0) >= ({ LECTOR: 1, EDITOR: 2, ADMIN: 3 }[rol]);
+// Perfiles: PROFESIONAL (1) < JEFE_PROYECTO (2) < ADMIN (3). LECTOR y EDITOR son alias de nivel (1 y 2) que usan las vistas.
+const NIVEL = { PROFESIONAL: 1, LECTOR: 1, JEFE_PROYECTO: 2, EDITOR: 2, ADMIN: 3 };
+export const puede = (rol) => (NIVEL[estado.usuario?.rol] || 0) >= NIVEL[rol];
+export const esProfesional = () => estado.usuario?.rol === 'PROFESIONAL';
+export const NOMBRE_PERFIL = { ADMIN: 'Administrador', JEFE_PROYECTO: 'Jefe de Proyecto', PROFESIONAL: 'Profesional' };
 
 export const ETIQ = {
   ALINEADA: ['Alineada', 'b-verde'], REASIGNADA: ['Reasignada', 'b-azul'], NUEVA: ['Nueva', 'b-ambar'], TRANSVERSAL: ['Transversal', 'b-gris'],
@@ -96,7 +100,7 @@ export function modal({ titulo, contenido, botones = [{ texto: 'Cerrar', valor: 
     velo.innerHTML = `<div class="modal" role="dialog" aria-modal="true" ${ancho ? `style="width:min(${ancho}px,100%)"` : ''}>
       <div class="cab"><h2>${esc(titulo)}</h2><button class="cerrar" aria-label="Cerrar">×</button></div>
       <form class="cuerpo" novalidate>${contenido}</form>
-      <div class="pie">${botones.map((b, i) => `<button type="button" class="btn ${b.clase || ''}" data-i="${i}">${esc(b.texto)}</button>`).join('')}</div></div>`;
+      ${botones.length ? `<div class="pie">${botones.map((b, i) => `<button type="button" class="btn ${b.clase || ''}" data-i="${i}">${esc(b.texto)}</button>`).join('')}</div>` : ''}</div>`;
     const cerrar = (valor) => { velo.remove(); document.removeEventListener('keydown', tecla); resolver({ valor, form: velo.querySelector('form'), datos: datosForm(velo.querySelector('form')) }); };
     const tecla = (e) => { if (e.key === 'Escape') cerrar(null); };
     document.addEventListener('keydown', tecla);

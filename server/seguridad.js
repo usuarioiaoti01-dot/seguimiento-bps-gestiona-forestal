@@ -1,8 +1,11 @@
 'use strict';
 /**
  * Autenticación por usuario y clave (bcrypt) con sesión en cookie httpOnly
- * firmada (JWT). Roles: ADMIN (todo + usuarios, parámetros, datos personales),
- * EDITOR (registra seguimiento y reprograma), LECTOR (solo consulta).
+ * firmada (JWT). Perfiles: ADMIN (Administrador: todo, incluidos usuarios, perfiles y datos personales),
+ * JEFE_PROYECTO (todo menos crear usuarios, modificar perfiles y ver datos personales) y PROFESIONAL
+ * (solo su propia información; actualiza el estado y el avance de sus actividades).
+ * Niveles para `requiere`: PROFESIONAL (1) < JEFE_PROYECTO (2) < ADMIN (3). LECTOR y EDITOR son alias de
+ * nivel (1 y 2) que usan las rutas; no son perfiles de usuario. El alcance del PROFESIONAL lo acota server.js.
  */
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
@@ -10,7 +13,8 @@ const jwt = require('jsonwebtoken');
 const config = require('./config');
 
 const COOKIE = 'sgf_sesion';
-const NIVEL = { LECTOR: 1, EDITOR: 2, ADMIN: 3 };
+const PERFILES = ['ADMIN', 'JEFE_PROYECTO', 'PROFESIONAL'];
+const NIVEL = { PROFESIONAL: 1, LECTOR: 1, JEFE_PROYECTO: 2, EDITOR: 2, ADMIN: 3 };
 
 let secreto = config.sesion.secreto;
 if (!secreto) {
@@ -80,4 +84,4 @@ async function asegurarAdministrador(repo) {
   console.log(`[seguridad] Administrador inicial creado: ${correo}${generada ? ` · clave temporal: ${clave}` : ' (clave tomada de ADMIN_CLAVE_INICIAL)'} · se pedirá cambiarla al ingresar.`);
 }
 
-module.exports = { bcrypt, emitirSesion, leerSesion, requiere, exigirCabeceraApp, limitarIngreso, asegurarAdministrador, claveValida, generarClaveTemporal, COOKIE };
+module.exports = { PERFILES, bcrypt, emitirSesion, leerSesion, requiere, exigirCabeceraApp, limitarIngreso, asegurarAdministrador, claveValida, generarClaveTemporal, COOKIE };

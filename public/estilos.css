@@ -1,4 +1,4 @@
-/* Seguimiento BPS · Gestiona Forestal — hoja de estilos
+/* Seguimiento Actividades Gestiona Forestal 2026 — hoja de estilos
    Paleta institucional sobria (verde bosque) y semáforo de riesgo. */
 :root {
   --fondo: #f4f6f3;
@@ -85,10 +85,21 @@ h3 { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacin
 .tarjeta > .cuerpo { padding: 14px 16px; }
 .tarjeta > .cuerpo.sin { padding: 0; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.kpi { padding: 14px 16px; }
+.kpi { padding: 14px 16px; text-align: center; }
 .kpi .v { font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
 .kpi .e { font-size: 12px; color: var(--texto-2); }
 .kpi.rojo .v { color: var(--rojo); } .kpi.ambar .v { color: var(--ambar); } .kpi.verde .v { color: var(--verde); }
+/* tarjetas que llevan a otra parte del tablero */
+.kpi-enlace { font: inherit; text-align: center; cursor: pointer; display: block; width: 100%; transition: box-shadow .15s, border-color .15s; }
+.kpi-enlace .v, .kpi-enlace .e { display: block; }
+.kpi-enlace:hover { border-color: var(--marca-2); box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.kpi-enlace:focus-visible { outline: 2px solid var(--marca-2); outline-offset: 2px; }
+.filtro-activo { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--marca-suave); border-bottom: 1px solid var(--borde); font-size: 12.5px; }
+.filtro-activo[hidden] { display: none; }
+/* VigenciaTimeline: sin su fila KPI (el Tablero tiene sus tarjetas); se conserva el aviso de firma de adendas del gráfico */
+.vt .vt-kpis { display: none; }
+/* El gráfico (SVG de 820 px mínimo) debe desplazarse dentro de su tarjeta y no ensanchar la página en pantallas angostas */
+#vigencias, #profesionales { min-width: 0; } /* también la tabla de profesionales, que ya ensanchaba la página */
 .rejilla-2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 18px; }
 @media (max-width: 1200px) { .rejilla-2 { grid-template-columns: 1fr; } }
 
@@ -235,3 +246,17 @@ select.en-linea { max-width: 128px; }
 .diff del { color: var(--rojo); text-decoration: line-through; } .diff ins { color: var(--verde); text-decoration: none; }
 .campo input[type=checkbox] { width: auto; flex: none; }
 .campo input.en-linea { width: 70px; flex: none; }
+
+/* Filtro del gráfico de vigencia (vigencia actual / historial completo) y adendas concluidas */
+.filtro-grafico { display: flex; gap: 6px; margin: 4px 0 8px; }
+.filtro-grafico .btn[aria-pressed="true"] { background: var(--marca); border-color: var(--marca); color: #fff; }
+.adenda.CONCLUIDA { border-left: 4px solid var(--gris); }
+
+/* Botón de cierre de las ventanas: arriba a la derecha y con color */
+.modal .cerrar { background: var(--marca); color: #fff; width: 30px; height: 30px; border-radius: 8px; font-size: 20px; line-height: 1; display: grid; place-items: center; flex: none; }
+.modal .cerrar:hover { background: var(--marca-2); }
+.modal .cerrar:focus-visible { outline: 2px solid var(--marca-2); outline-offset: 2px; }
+/* Paginador del plan de trabajo */
+.paginador { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--borde); }
+.paginador .acciones { display: flex; gap: 4px; flex-wrap: wrap; }
+.paginador .btn[disabled] { opacity: .45; cursor: default; }

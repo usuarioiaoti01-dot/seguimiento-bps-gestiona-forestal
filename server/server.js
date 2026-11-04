@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Seguimiento de Consultores BPS – Gestiona Forestal
+ * Seguimiento Actividades Gestiona Forestal 2026
  * Servidor web: API REST + interfaz estática (carpeta public/).
  */
 const path = require('path');
@@ -12,6 +12,7 @@ const { crearServicio } = require('./servicio');
 const { crearAgente } = require('./ia/agente');
 const seg = require('./seguridad');
 const { hoyLima } = require('./motor/calendario');
+const { crearPlanesPdf } = require('./planes-pdf');
 
 async function crearApp() {
   const repo = await crearRepositorio();
@@ -35,8 +36,50 @@ async function crearApp() {
     next();
   });
   app.use(seg.leerSesion);
+  // El perfil, el vínculo con el profesional y el estado de la cuenta se leen de la base en cada petición:
+  // desactivar una cuenta, cambiar su perfil o restablecer su clave surte efecto de inmediato.
+  app.use('/api', async (req, res, next) => {
+    if (!req.usuario) return next();
+    try {
+      const u = await repo.buscarUsuarioId(req.usuario.id);
+      if (!u || !u.activo) { res.clearCookie(seg.COOKIE, { path: '/' }); req.usuario = null; return next(); }
+      Object.assign(req.usuario, { correo: u.correo, nombre: u.nombre, rol: u.rol, consultor_id: u.consultor_id ?? null, cambiar: !!u.debe_cambiar_clave });
+      next();
+    } catch (err) { next(err); }
+  });
   app.use('/api', seg.exigirCabeceraApp);
 
+  // Perfil PROFESIONAL: solo su ficha, el PDF de su plan, su bitácora, el asistente (acotado a su información)
+  // y el estado y el avance de sus propias actividades. Todo lo demás se rechaza aquí, antes de llegar a la ruta.
+  const CAMPOS_PROFESIONAL = ['avance', 'estado', 'revision', 'motivo'];
+  app.use('/api', async (req, res, next) => {
+    if (!req.usuario || req.usuario.rol !== 'PROFESIONAL' || req.path.startsWith('/auth/')) return next();
+    const mio = req.usuario.consultor_id;
+    const denegar = (msg = 'Su perfil solo permite consultar y actualizar su propia información') => res.status(403).json({ error: msg });
+    try {
+      if (!mio) return denegar('Su cuenta no está vinculada a un profesional');
+      const p = req.path; const m = req.method; let g;
+      if (m === 'GET' && p === '/parametros') return next();
+      if (m === 'POST' && p === '/ia/mensaje') return next();
+      if (m === 'GET' && (g = p.match(/^\/consultores\/(\d+)$/))) return Number(g[1]) === mio ? next() : denegar();
+      if (m === 'GET' && p === '/bitacora') return String(req.query.consultor_id) === String(mio) ? next() : denegar();
+      if (m === 'GET' && (g = p.match(/^\/planes\/(\d+)\/pdf$/))) {
+        const plan = (await servicio.datos()).planes.find((x) => x.plan_id === Number(g[1]));
+        return plan && plan.consultor_id === mio ? next() : denegar();
+      }
+      if (m === 'PATCH' && (g = p.match(/^\/actividades\/(\d+)$/))) {
+        const d = await servicio.datos();
+        const act = d.actividades.find((x) => x.actividad_id === Number(g[1]));
+        const plan = act && d.planes.find((x) => x.plan_id === act.plan_id);
+        if (!plan || plan.consultor_id !== mio) return denegar();
+        if (Object.keys(req.body || {}).some((k) => !CAMPOS_PROFESIONAL.includes(k))) return denegar('Solo puede modificar el avance y el estado de sus actividades');
+        return next();
+      }
+      return denegar();
+    } catch (err) { return next(err); }
+  });
+
+  const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
   const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
 
@@ -63,7 +106,7 @@ async function crearApp() {
   app.post('/api/auth/salir', (req, res) => { res.clearCookie(seg.COOKIE, { path: '/' }); res.json({ ok: true }); });
   app.get('/api/auth/yo', (req, res) => {
     if (!req.usuario) return res.status(401).json({ error: 'Sesión no iniciada' });
-    res.json({ usuario: { correo: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, cambiarClave: !!req.usuario.cambiar }, ia: !!config.ia.claveApi, modo: repo.tipo });
+    res.json({ usuario: { correo: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, consultor_id: req.usuario.consultor_id ?? null, cambiarClave: !!req.usuario.cambiar }, ia: !!config.ia.claveApi, modo: repo.tipo });
   });
   app.post('/api/auth/cambiar-clave', seg.requiere('LECTOR'), h(async (req, res) => {
     const { actual, nueva } = req.body || {};
@@ -75,25 +118,87 @@ async function crearApp() {
     return { ok: true };
   }));
 
-  // ------------------------------------------------------------ usuarios (ADMIN)
+  // ------------------------------------------------------------ usuarios (solo el Administrador)
+  const esAdminPrincipal = (correo) => !!config.admin.correo && String(correo).toLowerCase() === config.admin.correo.trim().toLowerCase();
+  const correoValido = (c) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(c || '').trim());
+  const err400 = (msg, estado = 400) => Object.assign(new Error(msg), { estado });
+  /** Perfil PROFESIONAL: exige un consultor existente y sin otra cuenta; los demás perfiles no se vinculan. */
+  async function vinculo(rol, consultorId, exceptoUsuarioId = null) {
+    if (rol !== 'PROFESIONAL') return null;
+    const id = Number(consultorId);
+    const c = id && (await servicio.datos()).consultores.find((x) => x.consultor_id === id && x.activo !== 0 && x.activo !== false);
+    if (!c) throw err400('Seleccione el profesional al que pertenece la cuenta');
+    if ((await repo.listarUsuarios()).some((u) => u.consultor_id === id && u.usuario_id !== exceptoUsuarioId)) throw err400('Ese profesional ya tiene una cuenta', 409);
+    return c;
+  }
   app.get('/api/usuarios', seg.requiere('ADMIN'), h(() => repo.listarUsuarios()));
   app.post('/api/usuarios', seg.requiere('ADMIN'), h(async (req) => {
-    const { correo, nombre, rol } = req.body || {};
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo || '') || !nombre || !['ADMIN', 'EDITOR', 'LECTOR'].includes(rol)) throw Object.assign(new Error('Correo, nombre y rol válidos son obligatorios'), { estado: 400 });
+    const { correo, rol, consultor_id } = req.body || {};
+    if (!correoValido(correo) || !seg.PERFILES.includes(rol)) throw err400('Correo y perfil válidos son obligatorios');
+    const c = await vinculo(rol, consultor_id);
+    const nombre = String((req.body && req.body.nombre) || (c && c.nombres) || '').trim();
+    if (!nombre) throw err400('El nombre es obligatorio');
     const temporal = seg.generarClaveTemporal();
-    const u = await repo.crearUsuario({ correo: correo.trim().toLowerCase(), nombre, rol, clave_hash: await seg.bcrypt.hash(temporal, 11), debe_cambiar_clave: 1 });
-    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'usuario', entidad_id: u.usuario_id, accion: 'CREAR', cambios_json: { correo: u.correo, rol } });
+    const u = await repo.crearUsuario({ correo: correo.trim().toLowerCase(), nombre, rol, consultor_id: c ? c.consultor_id : null, clave_hash: await seg.bcrypt.hash(temporal, 11), debe_cambiar_clave: 1 });
+    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'usuario', entidad_id: u.usuario_id, accion: 'CREAR', cambios_json: { correo: u.correo, rol, consultor_id: u.consultor_id ?? null } });
     return { usuario: u, clave_temporal: temporal };
   }));
+  // Alta de varias cuentas PROFESIONAL a la vez (una por consultor, con su correo). Se valida todo antes de crear nada.
+  app.post('/api/usuarios/profesionales', seg.requiere('ADMIN'), h(async (req) => {
+    const cuentas = Array.isArray(req.body && req.body.cuentas) ? req.body.cuentas : [];
+    if (!cuentas.length || cuentas.length > 50) throw err400('Indique entre 1 y 50 cuentas');
+    const existentes = new Set((await repo.listarUsuarios()).map((u) => u.correo.toLowerCase()));
+    const vistos = new Set();
+    const plan = [];
+    for (const x of cuentas) {
+      const correo = String(x.correo || '').trim().toLowerCase();
+      const c = await vinculo('PROFESIONAL', x.consultor_id);
+      if (!correoValido(correo)) throw err400(`Correo no válido para ${c.nombres}`);
+      if (existentes.has(correo) || vistos.has(correo)) throw err400(`El correo ${correo} ya está en uso`, 409);
+      if (plan.some((p) => p.c.consultor_id === c.consultor_id)) throw err400(`${c.nombres} aparece dos veces`);
+      vistos.add(correo); plan.push({ c, correo });
+    }
+    const creadas = [];
+    for (const { c, correo } of plan) {
+      const temporal = seg.generarClaveTemporal();
+      const u = await repo.crearUsuario({ correo, nombre: c.nombres, rol: 'PROFESIONAL', consultor_id: c.consultor_id, clave_hash: await seg.bcrypt.hash(temporal, 11), debe_cambiar_clave: 1 });
+      await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'usuario', entidad_id: u.usuario_id, accion: 'CREAR', cambios_json: { correo, rol: 'PROFESIONAL', consultor_id: c.consultor_id } });
+      creadas.push({ usuario_id: u.usuario_id, consultor_id: c.consultor_id, clave: c.clave, nombre: c.nombres, correo, clave_temporal: temporal });
+    }
+    return { cuentas: creadas };
+  }));
   app.patch('/api/usuarios/:id', seg.requiere('ADMIN'), h(async (req) => {
+    const id = Number(req.params.id);
+    const destino = await repo.buscarUsuarioId(id);
+    if (!destino) throw err400('Usuario no encontrado', 404);
+    const b = req.body || {};
     const cambios = {};
-    if (req.body.rol) cambios.rol = req.body.rol;
-    if (req.body.activo !== undefined) cambios.activo = req.body.activo ? 1 : 0;
-    if (req.body.nombre) cambios.nombre = req.body.nombre;
+    const principal = esAdminPrincipal(destino.correo);
+    const propio = destino.usuario_id === req.usuario.id;
+    if (b.rol !== undefined && b.rol !== destino.rol) {
+      if (!seg.PERFILES.includes(b.rol)) throw err400('Perfil no válido');
+      if (principal || propio) throw err400('No puede cambiar el perfil del administrador principal ni el de su propia cuenta');
+      cambios.rol = b.rol;
+    }
+    const rolFinal = cambios.rol || destino.rol;
+    if (b.activo !== undefined) {
+      const activo = b.activo ? 1 : 0;
+      if (!activo && (principal || propio)) throw err400('No puede desactivar al administrador principal ni su propia cuenta');
+      if (activo !== (destino.activo ? 1 : 0)) cambios.activo = activo;
+    }
+    if (b.nombre && b.nombre !== destino.nombre) cambios.nombre = String(b.nombre).trim();
+    // vínculo con el profesional: solo el perfil PROFESIONAL lo tiene
+    const activoFinal = cambios.activo ?? (destino.activo ? 1 : 0);
+    if (rolFinal === 'PROFESIONAL') {
+      const nuevo = b.consultor_id !== undefined ? Number(b.consultor_id) || null : (destino.consultor_id ?? null);
+      if (nuevo || activoFinal) await vinculo(rolFinal, nuevo, id);
+      if (nuevo !== (destino.consultor_id ?? null)) cambios.consultor_id = nuevo;
+    } else if (destino.consultor_id) cambios.consultor_id = null;
     let temporal = null;
-    if (req.body.restablecer) { temporal = seg.generarClaveTemporal(); cambios.clave_hash = await seg.bcrypt.hash(temporal, 11); cambios.debe_cambiar_clave = 1; }
-    const u = await repo.actualizarUsuario(req.params.id, cambios);
-    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'usuario', entidad_id: Number(req.params.id), accion: 'MODIFICAR', cambios_json: { ...cambios, clave_hash: cambios.clave_hash ? '(restablecida)' : undefined } });
+    if (b.restablecer) { temporal = seg.generarClaveTemporal(); cambios.clave_hash = await seg.bcrypt.hash(temporal, 11); cambios.debe_cambiar_clave = 1; }
+    const { clave_hash: _h, ...sinClave } = destino;
+    const u = Object.keys(cambios).length ? await repo.actualizarUsuario(id, cambios) : sinClave;
+    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'usuario', entidad_id: id, accion: 'MODIFICAR', cambios_json: { correo: destino.correo, ...cambios, clave_hash: cambios.clave_hash ? '(restablecida)' : undefined } });
     return { usuario: u, clave_temporal: temporal };
   }));
 
@@ -106,6 +211,9 @@ async function crearApp() {
         consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil,
         contrato: it.contrato && it.contrato.numero, expediente: it.contrato && it.contrato.expediente,
         vigencia: { ...it.vigencia },
+        historial_adendas: it.adendas.filter((a) => a.estado === 'CONCLUIDA').sort((a, b) => a.numero - b.numero)
+          .map((a) => ({ numero: a.numero, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin, plazo_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null })),
+        cobertura: it.cobertura,
         plan: it.plan && { plan_id: it.plan.plan_id, estado: it.plan.estado, nombre: it.plan.nombre },
         pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
         atrasadas: it.pronostico ? Object.values(it.pronostico.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion)).length : 0,
@@ -113,7 +221,36 @@ async function crearApp() {
       })),
     };
   }));
-  app.get('/api/consultores/:id', seg.requiere('LECTOR'), h((req) => servicio.detalleConsultor(req.params.id, { verPersonales: req.usuario.rol === 'ADMIN', corte: req.query.corte })));
+  app.get('/api/consultores/:id', seg.requiere('LECTOR'), h(async (req) => {
+    const det = await servicio.detalleConsultor(req.params.id, { verPersonales: req.usuario.rol === 'ADMIN', corte: req.query.corte });
+    return { ...det, plan_pdf: det.plan ? planesPdf.info(det.plan.plan_id) : { existe: false } };
+  }));
+
+  // PDF del plan aprobado: se muestra en el visor de la ficha (iframe del mismo origen) y lo adjunta un EDITOR.
+  const planDe = async (id) => {
+    const plan = (await servicio.datos()).planes.find((p) => p.plan_id === Number(id) && p.activo !== 0 && p.activo !== false);
+    if (!plan) throw Object.assign(new Error('Plan no encontrado'), { estado: 404 });
+    return plan;
+  };
+  app.get('/api/planes/:id/pdf', seg.requiere('LECTOR'), (req, res, next) => {
+    planDe(req.params.id).then((plan) => {
+      if (!planesPdf.info(plan.plan_id).existe) throw Object.assign(new Error('El plan no tiene un PDF adjunto'), { estado: 404 });
+      res.set({
+        'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="plan-${plan.plan_id}.pdf"`, 'Cache-Control': 'private, no-store',
+        'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'",
+      });
+      res.sendFile(planesPdf.ruta(plan.plan_id), (err) => { if (err && !res.headersSent) next(err); });
+    }).catch(next);
+  });
+  app.put('/api/planes/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: planesPdf.MAX_BYTES }), h(async (req) => {
+    const plan = await planDe(req.params.id);
+    let motivo = '';
+    try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
+    if (motivo.length < 5) throw Object.assign(new Error('Indique el motivo (mínimo 5 caracteres)'), { estado: 400, requiereMotivo: true });
+    const r = planesPdf.guardar(plan.plan_id, req.body);
+    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: plan.plan_id, consultor_id: plan.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
+    return { ok: true, ...planesPdf.info(plan.plan_id) };
+  }));
   app.get('/api/linea-base', seg.requiere('LECTOR'), h(() => servicio.lineaBase()));
   app.get('/api/adendas', seg.requiere('LECTOR'), h(async () => {
     const d = await servicio.datos();
@@ -133,7 +270,7 @@ async function crearApp() {
     return filas;
   }));
   app.get('/api/parametros', seg.requiere('LECTOR'), h(async () => { const d = await servicio.datos(); return { parametros: d.parametros, feriados: d.feriados, corte_vigente: await servicio.corteVigente() }; }));
-  app.get('/api/ia/uso', seg.requiere('ADMIN'), h(() => repo.usoIA()));
+  app.get('/api/ia/uso', seg.requiere('JEFE_PROYECTO'), h(() => repo.usoIA()));
 
   // Exportación CSV (abre en Excel con separador ;)
   app.get('/api/exportar/actividades.csv', seg.requiere('LECTOR'), async (req, res, next) => {
@@ -152,7 +289,7 @@ async function crearApp() {
   });
 
   // ------------------------------------------------------------ escrituras (EDITOR)
-  app.patch('/api/actividades/:id', seg.requiere('EDITOR'), h((req) => servicio.actualizarActividad(req.params.id, req.body, ctx(req))));
+  app.patch('/api/actividades/:id', seg.requiere('PROFESIONAL'), (req, res, next) => (req.usuario.rol === 'PROFESIONAL' ? next() : seg.requiere('JEFE_PROYECTO')(req, res, next)), h((req) => servicio.actualizarActividad(req.params.id, req.body, ctx(req))));
   app.post('/api/planes/:id/actividades', seg.requiere('EDITOR'), h((req) => servicio.crearActividad(req.params.id, req.body, ctx(req))));
   app.post('/api/actividades/:id/anular', seg.requiere('EDITOR'), h((req) => servicio.anularActividad(req.params.id, ctx(req))));
   app.put('/api/actividades/:id/predecesoras', seg.requiere('EDITOR'), h((req) => servicio.definirDependencias(req.params.id, req.body.predecesoras, ctx(req))));
@@ -169,18 +306,18 @@ async function crearApp() {
   }
 
   // ------------------------------------------------------------ configuración (ADMIN)
-  app.put('/api/parametros/:codigo', seg.requiere('ADMIN'), h(async (req) => {
+  app.put('/api/parametros/:codigo', seg.requiere('JEFE_PROYECTO'), h(async (req) => {
     const r = await repo.guardarParametro(req.params.codigo, req.body.valor ?? '', req.usuario.correo);
     await servicio.recalcularYGuardar(req.usuario.correo, `Parámetro ${req.params.codigo} actualizado`);
     return r;
   }));
-  app.post('/api/feriados', seg.requiere('ADMIN'), h(async (req) => {
+  app.post('/api/feriados', seg.requiere('JEFE_PROYECTO'), h(async (req) => {
     const { fecha, descripcion, tipo } = req.body || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '') || !descripcion) throw Object.assign(new Error('Fecha (AAAA-MM-DD) y descripción son obligatorias'), { estado: 400 });
     await repo.guardarFeriado({ fecha, descripcion, tipo: tipo === 'NO_LABORABLE' ? 'NO_LABORABLE' : 'FERIADO' }, req.usuario.correo);
     await servicio.recalcularYGuardar(req.usuario.correo, 'Calendario actualizado');
   }));
-  app.delete('/api/feriados/:fecha', seg.requiere('ADMIN'), h(async (req) => {
+  app.delete('/api/feriados/:fecha', seg.requiere('JEFE_PROYECTO'), h(async (req) => {
     await repo.eliminarFeriado(req.params.fecha, req.usuario.correo);
     await servicio.recalcularYGuardar(req.usuario.correo, 'Calendario actualizado');
   }));
@@ -199,7 +336,7 @@ async function crearApp() {
   app.use('/api', (req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
-    const estado = err.estado || (err.codigo === 'CICLO_DEPENDENCIAS' ? 400 : 500);
+    const estado = err.estado || (err.status >= 400 && err.status < 500 ? err.status : 0) || (err.codigo === 'CICLO_DEPENDENCIAS' ? 400 : 500);
     if (estado >= 500) console.error('[error]', err);
     res.status(estado).json({ error: estado >= 500 && config.produccion ? 'Error interno. Revise el registro del servidor.' : err.message, requiereMotivo: err.requiereMotivo, actual: err.actual });
   });
@@ -210,7 +347,7 @@ async function crearApp() {
 if (require.main === module) {
   crearApp().then(({ app, repo }) => {
     app.listen(config.puerto, () => {
-      console.log(`Seguimiento BPS · Gestiona Forestal → http://localhost:${config.puerto}  (datos: ${repo.tipo}${config.ia.claveApi ? ', asistente IA activo' : ', asistente IA sin clave'})`);
+      console.log(`Seguimiento Actividades Gestiona Forestal 2026 → http://localhost:${config.puerto}  (datos: ${repo.tipo}${config.ia.claveApi ? ', asistente IA activo' : ', asistente IA sin clave'})`);
     });
   }).catch((err) => { console.error('No se pudo iniciar:', err.message); process.exit(1); });
 }

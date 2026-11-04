@@ -1,4 +1,4 @@
-# Seguimiento BPS · Gestiona Forestal
+# Seguimiento Actividades Gestiona Forestal 2026
 
 Aplicación web de la OTI del SERFOR para el seguimiento de la **contratación (adendas) y vigencia**, los **planes de trabajo** y la **fecha probable de término** de los consultores BPS que desarrollan el Gestiona Forestal (PI2 Bosques – UE 003), con **asistente de IA (Claude Haiku)** y **trazabilidad completa en SQL Server**.
 
@@ -24,7 +24,7 @@ Abra http://localhost:3080, ingrese con el correo y la clave inicial y defina su
 **Opción rápida (desde la carpeta del proyecto, con las credenciales SQL_* del `.env`):**
 ```powershell
 npm run bd:probar      # prueba conexión, versión, compatibilidad y permisos
-npm run bd:instalar    # ejecuta db/01 a db/05 en orden (requiere db_owner; no se repite si ya existe el esquema)
+npm run bd:instalar    # ejecuta db/01 a db/07 en orden (06 y 07 antes de la verificación 05) (requiere db_owner; no se repite si ya existe el esquema)
 ```
 
 **Opción manual (SSMS o sqlcmd):**
@@ -41,7 +41,9 @@ npm run bd:instalar    # ejecuta db/01 a db/05 en orden (requiere db_owner; no s
    | `db/02_vistas.sql` | Vistas de reporte: vigencia, estado de planes, actividades, cobertura de línea base y consumo de IA. |
    | `db/03_seguridad.sql` | Roles `sgf_app` (aplicación, sin DELETE) y `sgf_lectura` (reportes, sin datos personales). Incluye plantilla del login. |
    | `db/04_datos_iniciales.sql` | Carga inicial desde la matriz de control (una sola vez). |
-   | `db/05_verificacion.sql` | Comprobaciones (conteos, tablas temporales, vigencias). |
+   | `db/06_historial_adendas.sql` | Historial de adendas concluidas (01 y 02): columnas `plazo_dias`, `plazo_solicitado_dias`, `inicio_calculado`, estado `CONCLUIDA` y carga idempotente desde `db/fuentes/historial_adendas_01_02.csv`. Se genera con `npm run historial`; no editar a mano. |
+   | `db/07_perfiles_usuario.sql` | Perfiles `ADMIN` / `JEFE_PROYECTO` / `PROFESIONAL` y vínculo de cada cuenta con su consultor (una por profesional). Migra EDITOR → JEFE_PROYECTO. |
+   | `db/05_verificacion.sql` | Comprobaciones (conteos, tablas temporales, vigencias, historial y días sin cobertura). |
 
    ```bat
    sqlcmd -S <servidor> -d SGF_SEGUIMIENTO -E -i db\01_esquema.sql
@@ -66,7 +68,7 @@ npm run bd:instalar    # ejecuta db/01 a db/05 en orden (requiere db_owner; no s
 | **Contratos y adendas** | Vista consolidada con situación al corte. |
 | **Línea base 2026** | Cobertura de los 62 entregables (concluido / cubierto / no cubierto) y anotaciones de la OTI. |
 | **Bitácora** | Quién, cuándo, qué (antes → después), por qué y origen (UI / IA / script). |
-| **Configuración** | Parámetros del pronóstico, feriados, usuarios y roles, consumo de tokens del asistente. |
+| **Configuración** | Parámetros del pronóstico, feriados, usuarios y perfiles (alta de las cuentas de los profesionales, restablecer claves, desactivar cuentas), consumo de tokens del asistente. |
 | **Asistente IA** | Consulta datos con herramientas, explica desvíos, simula, redacta correos o párrafos, y propone cambios que el usuario aplica. |
 
 ### Cálculo de la fecha probable (se ejecuta tras cada cambio)
@@ -79,15 +81,16 @@ npm run bd:instalar    # ejecuta db/01 a db/05 en orden (requiere db_owner; no s
 > Importante: hoy ninguna actividad tiene avance registrado; el pronóstico asume que lo vencido no se ejecutó. El primer paso operativo es registrar el avance real con cada consultor.
 
 ## 4. Seguridad, gobierno de datos e IA
-- Roles: **ADMIN** (todo, usuarios, parámetros, datos personales), **EDITOR** (seguimiento, adendas, reprogramaciones, aplicar propuestas de IA), **LECTOR** (consulta y simulación).
+- Perfiles: **Administrador** (acceso total; crea usuarios y modifica perfiles; único que ve datos personales), **Jefe de Proyecto** (todo lo demás: seguimiento, adendas, reprogramaciones, parámetros, aplicar propuestas de IA) y **Profesional** (solo su ficha; modifica el estado y el avance de sus actividades). Cada profesional tiene su cuenta; las claves temporales se entregan una sola vez y se cambian en el primer ingreso.
 - Claves con bcrypt, sesión en cookie `httpOnly` + `SameSite=Strict`, cabecera anti-CSRF, límite de intentos de ingreso, cabeceras de seguridad (CSP) y concurrencia optimista (409 si otro usuario cambió el registro).
 - Bajas lógicas; la bitácora es de solo inserción (`DENY UPDATE`); historial por tablas temporales.
 - **Ley N.° 29733**: DNI, teléfono y correo personal no se cargan en la semilla, solo los ve ADMIN y nunca se envían al modelo de IA.
-- **Supervisión humana de la IA**: el asistente no escribe en la base; las propuestas se aplican con un clic de un EDITOR/ADMIN y quedan con origen `IA` y el nombre de quien aprobó. El consumo de tokens queda en `sgf.ia_mensaje` / `sgf.v_uso_ia` (insumo para dimensionar los créditos de IA).
+- **Supervisión humana de la IA**: el asistente no escribe en la base; las propuestas se aplican con un clic de un Jefe de Proyecto o Administrador y quedan con origen `IA` y el nombre de quien aprobó. El consumo de tokens queda en `sgf.ia_mensaje` / `sgf.v_uso_ia` (insumo para dimensionar los créditos de IA).
 
 ## 5. Despliegue para compartir con colaboradores
 - Servidor Windows/Linux de la OTI con Node.js 22+, ejecutado como servicio (p. ej. NSSM en Windows o `systemd`/PM2 en Linux).
 - Publicar detrás de IIS (ARR) o Nginx con **HTTPS** y `COOKIE_SEGURA=true`, `NODE_ENV=production`, `SESION_SECRETO` aleatorio.
+- Despliegue en Google Cloud (Cloud Run + Cloud SQL para SQL Server): ver [docs/DESPLIEGUE_GOOGLE_CLOUD.md](docs/DESPLIEGUE_GOOGLE_CLOUD.md).
 - Detrás de un proxy inverso o de Cloud Run, defina `TRUST_PROXY` (nº de saltos de proxy; Cloud Run = `1`). Si no, el límite de intentos de ingreso agrupa a todos los usuarios en una sola IP.
 - Hay un `Dockerfile` (Node 22, escucha en el puerto 8080 y se ejecuta como usuario sin privilegios): `docker build -t sgf-seguimiento .`. La imagen no incluye `.env`; pase la configuración como variables de entorno.
 - Acceso solo desde la red institucional/VPN. Salida a `api.anthropic.com` habilitada en el firewall o proxy (`NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY`).

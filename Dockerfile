@@ -1,4 +1,4 @@
-# Seguimiento BPS · Gestiona Forestal — imagen para Cloud Run (o cualquier host de contenedores)
+# Seguimiento Actividades Gestiona Forestal 2026 — imagen para Cloud Run (o cualquier host de contenedores)
 FROM node:22-slim
 
 ENV NODE_ENV=production \

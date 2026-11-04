@@ -9,10 +9,42 @@ const fs = require('fs');
 const path = require('path');
 const { ENTIDADES } = require('./entidades');
 
+/**
+ * Equivale a db/06_historial_adendas.sql: un estado demo guardado antes del historial recibe las adendas
+ * CONCLUIDA de la semilla que le falten (se identifican por contrato y n.° de adenda; las existentes no se tocan).
+ */
+function incorporarHistorial(db, semilla) {
+  if (!semilla || !db.adendas) return;
+  const hay = new Set(db.adendas.map((a) => `${a.contrato_id}|${a.numero}`));
+  let sigId = db.adendas.reduce((m, a) => Math.max(m, a.adenda_id), 0) + 1;
+  let n = 0;
+  for (const a of semilla.adendas || []) {
+    if (a.estado !== 'CONCLUIDA' || hay.has(`${a.contrato_id}|${a.numero}`) || !db.contratos.some((k) => k.contrato_id === a.contrato_id)) continue;
+    db.adendas.push({ ...JSON.parse(JSON.stringify(a)), adenda_id: sigId++, activo: 1, revision: 1 });
+    n += 1;
+  }
+  if (n) {
+    db.bitacora.push({ bitacora_id: db.bitacora.reduce((m, b) => Math.max(m, b.bitacora_id), 0) + 1, fecha: new Date().toISOString(), usuario: 'sistema', entidad: 'adenda', entidad_id: null, consultor_id: null, accion: 'CREAR', cambios_json: JSON.stringify({ adendas_concluidas_insertadas: n }), motivo: 'Carga del historial de adendas 01 y 02 (db/fuentes/historial_adendas_01_02.csv)', origen: 'SCRIPT' });
+  }
+}
+
+/**
+ * Equivale a db/07_perfiles_usuario.sql: EDITOR pasa a JEFE_PROYECTO; las cuentas LECTOR quedan como
+ * PROFESIONAL inactivas y sin vínculo (se reactivan vinculándolas a un consultor).
+ */
+function migrarPerfiles(db) {
+  for (const u of db.usuarios || []) {
+    if (u.rol === 'EDITOR') u.rol = 'JEFE_PROYECTO';
+    else if (u.rol === 'LECTOR') { u.rol = 'PROFESIONAL'; u.activo = 0; u.consultor_id = null; }
+  }
+}
+
 function crearRepositorioMemoria({ semilla, archivo } = {}) {
   let db;
   if (archivo && fs.existsSync(archivo)) {
     db = JSON.parse(fs.readFileSync(archivo, 'utf8'));
+    incorporarHistorial(db, semilla);
+    migrarPerfiles(db);
   } else {
     const s = JSON.parse(JSON.stringify(semilla));
     db = {
@@ -159,7 +191,8 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
     async listarUsuarios() { return copia(db.usuarios.map(({ clave_hash, ...u }) => u)); },
     async crearUsuario(u) {
       if (db.usuarios.some((x) => x.correo.toLowerCase() === u.correo.toLowerCase())) throw Object.assign(new Error('Ya existe un usuario con ese correo'), { estado: 409 });
-      const n = { usuario_id: sig(db.usuarios, 'usuario_id'), activo: 1, debe_cambiar_clave: 1, creado_en: new Date().toISOString(), ultimo_acceso: null, ...u };
+      if (u.consultor_id && db.usuarios.some((x) => x.consultor_id === u.consultor_id)) throw Object.assign(new Error('Ese profesional ya tiene una cuenta'), { estado: 409 });
+      const n = { usuario_id: sig(db.usuarios, 'usuario_id'), activo: 1, consultor_id: null, debe_cambiar_clave: 1, creado_en: new Date().toISOString(), ultimo_acceso: null, ...u };
       db.usuarios.push(n); guardar();
       const { clave_hash, ...sinClave } = n;
       return copia(sinClave);
@@ -167,6 +200,7 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
     async actualizarUsuario(id, cambios) {
       const u = db.usuarios.find((x) => x.usuario_id === Number(id));
       if (!u) throw Object.assign(new Error('Usuario no encontrado'), { estado: 404 });
+      if (cambios.consultor_id && db.usuarios.some((x) => x !== u && x.consultor_id === cambios.consultor_id)) throw Object.assign(new Error('Ese profesional ya tiene una cuenta'), { estado: 409 });
       Object.assign(u, cambios); guardar();
       const { clave_hash, ...sinClave } = u;
       return copia(sinClave);

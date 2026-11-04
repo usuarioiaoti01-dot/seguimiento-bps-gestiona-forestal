@@ -106,3 +106,94 @@ test('semilla real: estado completo sin errores y alertas esperadas al 03/11/202
   const pbq = e.consultores.find((c) => c.consultor.clave === 'PBQ');
   assert.equal(pbq.pronostico.fin_probable, '2026-12-31'); // plan intacto: inicia el 09/11
 });
+
+// ---------------------------------------------------------------- cobertura entre adendas (historial)
+const { analizarCobertura } = require('../server/motor/cobertura');
+const ad = (numero, inicio, fin, estado = 'CONCLUIDA', extra = {}) => ({ adenda_id: numero, contrato_id: 1, numero, fecha_inicio: inicio, fecha_fin: fin, estado, activo: 1, ...extra });
+
+test('cobertura: adendas contiguas no tienen días sin cobertura', () => {
+  const c = analizarCobertura([ad(1, '2026-05-13', '2026-08-10'), ad(2, '2026-08-11', '2026-11-08'), ad(3, '2026-11-09', '2026-12-31', 'FIRMADA')]);
+  assert.deepEqual(c.tramos.map((t) => [t.anterior, t.siguiente, t.tipo, t.dias]), [[1, 2, 'CONTINUA', 0], [2, 3, 'CONTINUA', 0]]);
+  assert.equal(c.dias_sin_cobertura, 0);
+  assert.equal(c.consistente, true);
+});
+
+test('cobertura: los días entre el fin de una adenda y el inicio de la siguiente son días sin cobertura', () => {
+  // la Adenda 1 termina el 10/08 y la 2 inicia el 20/08: sin cobertura del 11/08 al 19/08 = 9 días
+  const c = analizarCobertura([ad(1, '2026-05-13', '2026-08-10'), ad(2, '2026-08-20', '2026-11-08')]);
+  assert.equal(c.brechas.length, 1);
+  assert.deepEqual({ ...c.brechas[0] }, { anterior: 1, siguiente: 2, tipo: 'BRECHA', dias: 9, desde: '2026-08-11', hasta: '2026-08-19' });
+  assert.equal(c.dias_sin_cobertura, 9);
+  // un solo día de diferencia ya cuenta
+  assert.equal(analizarCobertura([ad(1, '2026-05-01', '2026-05-31'), ad(2, '2026-06-02', '2026-06-30')]).brechas[0].dias, 1);
+});
+
+test('cobertura: vigencias superpuestas se marcan como inconsistencia, no como brecha', () => {
+  const c = analizarCobertura([ad(1, '2026-05-13', '2026-08-10'), ad(2, '2026-08-05', '2026-11-08')]);
+  assert.equal(c.brechas.length, 0);
+  assert.equal(c.superposiciones.length, 1);
+  assert.deepEqual({ ...c.superposiciones[0] }, { anterior: 1, siguiente: 2, tipo: 'SUPERPOSICION', dias: 6, desde: '2026-08-05', hasta: '2026-08-10' });
+  assert.equal(c.consistente, false);
+  assert.equal(c.dias_sin_cobertura, 0);
+});
+
+test('cobertura: una adenda larga que se superpone con una posterior no consecutiva también se detecta', () => {
+  const c = analizarCobertura([ad(1, '2026-01-01', '2026-12-31'), ad(2, '2026-02-01', '2026-02-28'), ad(3, '2026-03-01', '2026-03-31')]);
+  assert.deepEqual(c.superposiciones.map((t) => [t.anterior, t.siguiente]), [[1, 2], [1, 3]]);
+});
+
+test('cobertura: ignora adendas anuladas, anunciadas, en trámite e inactivas, y no depende del orden de llegada', () => {
+  const c = analizarCobertura([
+    ad(4, '2027-01-01', '2027-03-31', 'ANUNCIADA'), ad(5, '2027-02-01', '2027-02-10', 'EN_TRAMITE'), ad(6, '2026-09-01', '2026-09-05', 'ANULADA'),
+    ad(7, '2026-09-10', '2026-09-20', 'CONCLUIDA', { activo: 0 }),
+    ad(2, '2026-08-11', '2026-11-08'), ad(1, '2026-05-13', '2026-08-10'),
+  ]);
+  assert.deepEqual(c.tramos.map((t) => [t.anterior, t.siguiente, t.tipo]), [[1, 2, 'CONTINUA']]);
+  assert.deepEqual(analizarCobertura([]).tramos, []);
+  assert.equal(analizarCobertura([ad(1, '2026-05-13', '2026-08-10')]).consistente, true);
+});
+
+test('la semilla con el historial: 34 adendas, 19 concluidas y sin días sin cobertura ni superposiciones', () => {
+  assert.equal(semilla.adendas.length, 34);
+  const concl = semilla.adendas.filter((a) => a.estado === 'CONCLUIDA');
+  assert.equal(concl.length, 19);
+  assert.ok(concl.every((a) => a.plazo_dias === aDia(a.fecha_fin) - aDia(a.fecha_inicio) + 1), 'plazo_dias coincide con las fechas');
+  const e = construirEstado(semilla, { corte: '2026-11-04' });
+  assert.ok(e.consultores.every((it) => it.cobertura.dias_sin_cobertura === 0 && it.cobertura.consistente));
+  assert.ok(!e.alertas.some((a) => /^ADENDAS_/.test(a.codigo)));
+  // Montalbán (contrato 123): Adenda 01 (hasta 30/10) y Adenda 02 firmada (desde 31/10)
+  const ymf = e.consultores.find((it) => it.consultor.clave === 'YMF');
+  assert.deepEqual(ymf.cobertura.tramos.map((t) => [t.anterior, t.siguiente, t.tipo]), [[1, 2, 'CONTINUA']]);
+});
+
+test('el historial concluido no cambia la vigencia: sigue siendo el fin de la última adenda FIRMADA', () => {
+  const e = construirEstado(semilla, { corte: '2026-11-04' });
+  const erb = e.consultores.find((it) => it.consultor.clave === 'ERB');
+  assert.equal(erb.vigencia.adenda_vigente.numero, 3);
+  assert.equal(erb.vigencia.adenda_vigente.estado, 'FIRMADA');
+  assert.equal(erb.vigencia.adenda_siguiente.numero, 4);
+  assert.equal(erb.vigencia.fin_vigencia, '2026-11-13');
+  const copia = JSON.parse(JSON.stringify(semilla));
+  copia.adendas = copia.adendas.filter((a) => a.estado !== 'CONCLUIDA');
+  const sin = construirEstado(copia, { corte: '2026-11-04' }).consultores.find((it) => it.consultor.clave === 'ERB');
+  assert.deepEqual(sin.vigencia, erb.vigencia);
+});
+
+test('alertas: los días sin cobertura generan una alerta ALTA y la superposición una alerta MEDIA en la ficha', () => {
+  const copia = JSON.parse(JSON.stringify(semilla));
+  const k = (clave) => copia.contratos.find((c) => c.consultor_id === copia.consultores.find((x) => x.clave === clave).consultor_id).contrato_id;
+  // ASL: la Adenda 02 (11/08–08/11) pasa a terminar el 31/10 → 8 días sin cobertura (01/11–08/11)
+  copia.adendas.find((a) => a.contrato_id === k('ASL') && a.numero === 2).fecha_fin = '2026-10-31';
+  // EBS: la Adenda 02 pasa a comenzar el 01/08 → se superpone 10 días con la 01 (hasta el 10/08)
+  copia.adendas.find((a) => a.contrato_id === k('EBS') && a.numero === 2).fecha_inicio = '2026-08-01';
+  const e = construirEstado(copia, { corte: '2026-11-04' });
+  const brecha = e.alertas.find((a) => a.codigo === 'ADENDAS_SIN_COBERTURA');
+  assert.equal(brecha.clave, 'ASL');
+  assert.equal(brecha.prioridad, 'ALTA');
+  assert.match(brecha.titulo, /8 día\(s\) sin cobertura entre las Adendas N\.° 2 y N\.° 3/);
+  assert.match(brecha.detalle, /01\/11\/2026 al 08\/11\/2026/);
+  const sup = e.alertas.find((a) => a.codigo === 'ADENDAS_SUPERPUESTAS');
+  assert.equal(sup.clave, 'EBS');
+  assert.equal(sup.prioridad, 'MEDIA');
+  assert.match(sup.titulo, /Inconsistencia/);
+});

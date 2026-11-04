@@ -8,6 +8,7 @@ const fs = require('fs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
+process.env.PLANES_PDF_DIR = path.join(tmp, 'planes-pdf');
 process.env.ADMIN_CORREO = 'admin.prueba@serfor.gob.pe';
 process.env.ADMIN_CLAVE_INICIAL = 'ClavePrueba2026';
 process.env.FECHA_CORTE_PRUEBA = '1';
@@ -106,8 +107,8 @@ test('flujo completo: ingreso, cambio de clave, edición con recálculo, concurr
   assert.equal(csv.status, 200);
   assert.match(await csv.text(), /clave;consultor;numero/);
 
-  // Usuario lector no puede editar
-  const nu = await llamar('POST', '/api/usuarios', { correo: 'lector@serfor.gob.pe', nombre: 'Lector', rol: 'LECTOR' });
+  // El Administrador crea cuentas (cualquier dominio de correo)
+  const nu = await llamar('POST', '/api/usuarios', { correo: 'jefe@ejemplo.com', nombre: 'Jefe de Proyecto', rol: 'JEFE_PROYECTO' });
   assert.equal(nu.estado, 200);
   assert.ok(nu.cuerpo.clave_temporal);
 });
@@ -123,7 +124,7 @@ test('bitácora: los datos personales solo los ve el ADMIN', async () => {
   const admin = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
   assert.match(JSON.stringify(admin.cuerpo), /11223344/, 'el ADMIN ve el valor');
 
-  const nu = await llamar('POST', '/api/usuarios', { correo: 'editor.bit@serfor.gob.pe', nombre: 'Editor Bitácora', rol: 'EDITOR' });
+  const nu = await llamar('POST', '/api/usuarios', { correo: 'editor.bit@serfor.gob.pe', nombre: 'Editor Bitácora', rol: 'JEFE_PROYECTO' });
   assert.equal(nu.estado, 200);
   await llamar('POST', '/api/auth/salir');
   cookie = '';
@@ -133,5 +134,69 @@ test('bitácora: los datos personales solo los ve el ADMIN', async () => {
   const editor = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
   assert.equal(editor.estado, 200);
   assert.ok(editor.cuerpo.length > 0);
-  assert.ok(!/11223344|988777666/.test(JSON.stringify(editor.cuerpo)), 'el EDITOR no ve datos personales');
+  assert.ok(!/11223344|988777666/.test(JSON.stringify(editor.cuerpo)), 'el Jefe de Proyecto no ve datos personales');
+});
+
+test('historial de adendas: /api/estado lo expone y la edición valida los plazos', async () => {
+  // Continúa la sesión EDITOR de la prueba anterior
+  const est = await llamar('GET', '/api/estado');
+  const asl = est.cuerpo.consultores.find((c) => c.clave === 'ASL');
+  assert.deepEqual(asl.historial_adendas.map((h) => [h.numero, h.fecha_inicio, h.fecha_fin, h.plazo_dias, h.plazo_solicitado_dias]),
+    [[1, '2026-05-13', '2026-08-10', 90, null], [2, '2026-08-11', '2026-11-08', 90, 180]]);
+  assert.equal(asl.cobertura.dias_sin_cobertura, 0);
+  assert.equal(asl.cobertura.consistente, true);
+  assert.ok(est.cuerpo.consultores.every((c) => c.cobertura.consistente));
+
+  const det = await llamar('GET', `/api/consultores/${asl.consultor_id}`);
+  const ad2 = det.cuerpo.adendas.find((a) => a.numero === 2);
+  assert.equal(ad2.estado, 'CONCLUIDA');
+  assert.equal(det.cuerpo.adendas.length, 3);
+  assert.equal(det.cuerpo.cobertura.tramos.length, 2);
+
+  const mala = await llamar('PATCH', `/api/adendas/${ad2.adenda_id}`, { plazo_dias: 0, revision: ad2.revision, motivo: 'Prueba de validación' });
+  assert.equal(mala.estado, 400);
+  // un hueco entre la Adenda 02 y la 03 aparece como alerta en la ficha
+  const ok = await llamar('PATCH', `/api/adendas/${ad2.adenda_id}`, { fecha_fin: '2026-10-31', plazo_dias: 82, revision: ad2.revision, motivo: 'Corrección de la fecha de fin según el documento' });
+  assert.equal(ok.estado, 200, JSON.stringify(ok.cuerpo));
+  const despues = await llamar('GET', `/api/consultores/${asl.consultor_id}`);
+  assert.equal(despues.cuerpo.cobertura.dias_sin_cobertura, 8);
+  assert.ok(despues.cuerpo.alertas.some((a) => a.codigo === 'ADENDAS_SIN_COBERTURA' && a.prioridad === 'ALTA'));
+});
+
+test('PDF del plan aprobado: se adjunta con motivo, se muestra en visor y queda en la bitácora', async () => {
+  // Continúa la sesión EDITOR de la prueba anterior
+  const est = await llamar('GET', '/api/estado');
+  const erb = est.cuerpo.consultores.find((c) => c.clave === 'ERB');
+  const det = await llamar('GET', `/api/consultores/${erb.consultor_id}`);
+  const planId = det.cuerpo.plan.plan_id;
+  assert.equal(det.cuerpo.plan_pdf.existe, false);
+  assert.equal((await llamar('GET', `/api/planes/${planId}/pdf`)).estado, 404);
+
+  const subir = (cuerpo, motivo = 'Plan aprobado el 05/11/2026', tipo = 'application/pdf') => fetch(`${base}/api/planes/${planId}/pdf`, {
+    method: 'PUT', headers: { 'Content-Type': tipo, 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo), Cookie: cookie }, body: cuerpo });
+  const pdf = Buffer.from(['%PDF-1.4', '1 0 obj<<>>endobj', 'trailer<<>>', '%%EOF', ''].join(String.fromCharCode(10)));
+  assert.equal((await subir(Buffer.from('esto no es un pdf'))).status, 400, 'rechaza lo que no es PDF');
+  assert.equal((await subir(pdf, 'no')).status, 400, 'exige el motivo');
+  assert.equal((await subir(pdf, 'Plan aprobado el 05/11/2026', 'text/plain')).status, 400, 'exige Content-Type application/pdf');
+  const ok = await subir(pdf);
+  assert.equal(ok.status, 200);
+
+  const luego = await llamar('GET', `/api/consultores/${erb.consultor_id}`);
+  assert.equal(luego.cuerpo.plan_pdf.existe, true);
+  assert.equal(luego.cuerpo.plan_pdf.bytes, pdf.length);
+
+  const ver = await fetch(`${base}/api/planes/${planId}/pdf`, { headers: { 'X-SGF': '1', Cookie: cookie } });
+  assert.equal(ver.status, 200);
+  assert.equal(ver.headers.get('content-type'), 'application/pdf');
+  assert.match(ver.headers.get('content-security-policy'), /frame-ancestors 'self'/, 'se puede mostrar en el visor de la propia aplicación');
+  assert.equal(Buffer.compare(Buffer.from(await ver.arrayBuffer()), pdf), 0);
+  assert.equal((await fetch(`${base}/api/planes/${planId}/pdf`)).status, 401, 'sin sesión no se entrega');
+
+  // reemplazar conserva la versión anterior (nada se borra)
+  assert.equal((await subir(Buffer.concat([pdf, Buffer.from('%v2')]), 'Corrección del PDF aprobado')).status, 200);
+  assert.equal(fs.readdirSync(process.env.PLANES_PDF_DIR).filter((f) => f.startsWith(`plan-${planId}`)).length, 2);
+
+  const bit = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
+  assert.ok(bit.cuerpo.some((b) => b.entidad === 'plan_trabajo' && /plan_pdf/.test(b.cambios_json || '') && b.motivo === 'Plan aprobado el 05/11/2026'));
+  assert.ok(!bit.cuerpo.some((b) => /esto no es un pdf/.test(JSON.stringify(b))));
 });

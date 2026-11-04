@@ -11,7 +11,7 @@ const { ENTIDADES, filtrarColumnas } = require('./datos/entidades');
 
 const ESTADOS_ACTIVIDAD = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA', 'ANULADA'];
 const CLASIFICACIONES = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
-const ESTADOS_ADENDA = ['ANUNCIADA', 'EN_TRAMITE', 'FIRMADA', 'ANULADA'];
+const ESTADOS_ADENDA = ['ANUNCIADA', 'EN_TRAMITE', 'FIRMADA', 'ANULADA', 'CONCLUIDA'];
 const ESTADOS_PLAN = ['POR_REGISTRAR', 'RECIBIDO', 'OBSERVADO', 'APROBADO'];
 const ESTADOS_CC = ['BORRADOR', 'APROBADO', 'RECHAZADO'];
 
@@ -278,6 +278,9 @@ function crearServicio(repo) {
       if (m.estado && !ESTADOS_ADENDA.includes(m.estado)) throw error(400, 'Estado de adenda no válido');
       if (m.fecha_inicio && m.fecha_fin && m.fecha_fin < m.fecha_inicio) throw error(400, 'El fin de la adenda no puede ser anterior a su inicio');
       if (m.estado === 'FIRMADA' && !m.documento_ref) throw error(400, 'Una adenda FIRMADA requiere la referencia del documento');
+      for (const k of ['plazo_dias', 'plazo_solicitado_dias']) {
+        if (m[k] !== null && m[k] !== undefined && !(Number.isInteger(Number(m[k])) && Number(m[k]) > 0)) throw error(400, `${k === 'plazo_dias' ? 'El plazo otorgado' : 'El plazo solicitado'} debe ser un número entero de días mayor que cero`);
+      }
     },
     plan_trabajo: (f, previa = {}) => {
       validarFechas(f, ['fecha_recepcion']);
@@ -353,6 +356,7 @@ function crearServicio(repo) {
       adendas: [...it.adendas].sort((a, b) => a.numero - b.numero),
       plan: it.plan, pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
       vigencia: it.vigencia,
+      cobertura: it.cobertura,
       actividades: [...it.actividades].sort((a, b) => a.orden - b.orden).map((a) => ({ ...a, pronostico: it.pronostico ? it.pronostico.actividades[a.actividad_id] || null : null, predecesoras: deps.filter((x) => x.actividad_id === a.actividad_id).map((x) => ({ predecesora_id: x.predecesora_id, desfase_dias: x.desfase_dias })) })),
       linea_base: it.linea_base.map((lb) => ({ ...lb, cobertura: coberturaLineaBase(lb, d), actividades: d.actividades.filter((a) => a.entregable_id === lb.entregable_id && a.estado !== 'ANULADA').map((a) => a.numero) })),
       controles_cambio: (d.controles_cambio || []).filter((c) => c.consultor_id === Number(id)),

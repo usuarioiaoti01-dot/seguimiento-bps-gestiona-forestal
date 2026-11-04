@@ -274,3 +274,7 @@ GO
 
 print(f"consultores={len(consultores)} adendas={len(adendas)} planes={len(planes)} "
       f"actividades={len(actividades)} dependencias={len(dependencias)} linea_base={len(linea_base)}")
+
+# El historial de adendas concluidas (db/fuentes/*.csv) se vuelve a fusionar en la semilla; 04_datos_iniciales.sql no lo incluye.
+import subprocess
+subprocess.run([sys.executable, str(RAIZ / "herramientas" / "generar_historial.py"), "--solo-semilla"], check=True)

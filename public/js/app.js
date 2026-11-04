@@ -1,5 +1,5 @@
 // Punto de entrada: sesión, estructura, enrutador y asistente.
-import { api, estado, esc, aviso, fallo, ICONOS, modal } from './util.js';
+import { api, estado, esc, aviso, fallo, ICONOS, modal, esProfesional, NOMBRE_PERFIL } from './util.js';
 import { vistaTablero } from './vistas/tablero.js';
 import { vistaConsultor } from './vistas/consultor.js';
 import { vistaAdendas } from './vistas/adendas.js';
@@ -21,8 +21,8 @@ const RUTAS = [
 
 function pantallaIngreso() {
   raiz.innerHTML = `<div class="ingreso"><form class="tarjeta" id="f-ingreso">
-    <div class="logo" style="color:var(--marca)">${ICONOS.logo.replace('rgba(255,255,255,.14)', 'var(--marca)')}<div><b>Seguimiento BPS</b><small class="mut">Gestiona Forestal · OTI – SERFOR</small></div></div>
-    <div class="campo"><label for="correo">Correo institucional</label><input id="correo" name="correo" type="email" autocomplete="username" required></div>
+    <div class="logo" style="color:var(--marca)">${ICONOS.logo.replace('rgba(255,255,255,.14)', 'var(--marca)')}<div><b>Seguimiento Actividades Gestiona Forestal 2026</b><small class="mut">OTI – SERFOR</small></div></div>
+    <div class="campo"><label for="correo">Correo electrónico</label><input id="correo" name="correo" type="email" autocomplete="username" required></div>
     <div class="campo"><label for="clave">Clave</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
     <button class="btn prim" type="submit">Ingresar</button>
     <p class="mut2" style="margin:0">Acceso restringido al personal autorizado. Las acciones quedan registradas en la bitácora.</p>
@@ -33,6 +33,7 @@ function pantallaIngreso() {
     try {
       const r = await api('POST', '/auth/ingresar', { correo: f.correo.value, clave: f.clave.value });
       estado.usuario = r.usuario;
+      try { sessionStorage.removeItem('sgf-alertas-vistas'); } catch { /* sin almacenamiento: se mostrará al entrar */ }
       iniciar();
     } catch (err) { fallo(err); }
   };
@@ -61,16 +62,17 @@ function estructura() {
   const u = estado.usuario;
   raiz.innerHTML = `<div class="marco">
     <aside class="lateral">
-      <div class="logo">${ICONOS.logo}<div><b>Seguimiento BPS</b><small>Gestiona Forestal · PI2 Bosques</small></div></div>
-      <nav class="menu">
-        <a href="#/" data-menu="tablero">${ICONOS.tablero}Tablero</a>
+      <div class="logo">${ICONOS.logo}<div><b>TABLERO SEGUIMIENTO ACTIVIDADES GESTIONA FORESTAL - 2026</b><small>Gestiona Forestal · PI2 Bosques</small></div></div>
+      <nav class="menu">${esProfesional() ? `
+        <a href="#/consultor/${u.consultor_id}" data-menu="tablero">${ICONOS.tablero}Mi información</a>` : `
+        <a href="#/" data-menu="tablero">${ICONOS.tablero}Gestión Adendas</a>
         <a href="#/adendas" data-menu="adendas">${ICONOS.adendas}Contratos y adendas</a>
         <a href="#/linea-base" data-menu="lb">${ICONOS.lb}Línea base 2026</a>
         <a href="#/bitacora" data-menu="bitacora">${ICONOS.bitacora}Bitácora</a>
-        <a href="#/configuracion" data-menu="config">${ICONOS.config}Configuración</a>
+        <a href="#/configuracion" data-menu="config">${ICONOS.config}Configuración</a>`}
       </nav>
       <div class="pie">
-        <div><b>${esc(u.nombre)}</b><br><span style="opacity:.8">${esc(u.correo)} · ${esc(u.rol)}</span></div>
+        <div><b>${esc(u.nombre)}</b><br><span style="opacity:.8">${esc(u.correo)} · ${esc(NOMBRE_PERFIL[u.rol] || u.rol)}</span></div>
         <button id="b-clave">Cambiar clave</button>
         <button id="b-salir">Cerrar sesión</button>
         ${estado.modo === 'memoria' ? '<span style="opacity:.75">Modo demostración (datos en memoria)</span>' : ''}
@@ -78,7 +80,7 @@ function estructura() {
     </aside>
     <main class="principal">
       <header class="barra"><div class="titulo" id="titulo"></div>
-        <label class="corte" title="Ver el pronóstico a otra fecha de corte (solo consulta; no cambia el parámetro del sistema)">Corte
+        <label class="corte" title="Ver el pronóstico a otra fecha de corte (solo consulta; no cambia el parámetro del sistema)">Actualizado al
           <input type="date" id="corte"></label>
       </header>
       <section class="contenido" id="vista"></section>
@@ -93,7 +95,11 @@ function estructura() {
 }
 
 async function enrutar() {
-  const hash = location.hash || '#/';
+  let hash = location.hash || '#/';
+  if (esProfesional()) { // el Profesional solo ve su propia ficha (el servidor también lo exige)
+    const propia = `#/consultor/${estado.usuario.consultor_id}`;
+    if (hash !== propia) { location.hash = propia; return; }
+  }
   const ruta = RUTAS.find((r) => r.patron.test(hash)) || RUTAS[0];
   const m = hash.match(ruta.patron);
   document.querySelectorAll('.menu a').forEach((a) => a.classList.toggle('activo', a.dataset.menu === ruta.menu));
@@ -114,6 +120,7 @@ async function iniciar() {
   } catch { pantallaIngreso(); return; }
   if (estado.usuario.cambiarClave) { raiz.innerHTML = '<div class="ingreso"></div>'; await pantallaCambioClave(true); return; }
   estructura();
+  if (esProfesional() && location.hash !== `#/consultor/${estado.usuario.consultor_id}`) { location.hash = `#/consultor/${estado.usuario.consultor_id}`; return; }
   enrutar();
 }
 

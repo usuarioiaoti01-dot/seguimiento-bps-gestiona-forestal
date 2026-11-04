@@ -29,6 +29,7 @@ Conceptos del sistema:
 - Vigencia: fin de la última adenda FIRMADA. Una adenda ANUNCIADA o EN_TRAMITE no amplía la vigencia; solo se informa como vigencia potencial.
 - Fecha probable de término: la calcula el motor del sistema. Las actividades sin iniciar cuyo inicio ya pasó se reprograman desde la fecha de corte; las iniciadas proyectan lo que falta según su rendimiento (SPI = avance real / avance esperado, con un piso configurable); las dependencias fin-inicio arrastran a las sucesoras.
 - Holgura = fin de vigencia − fecha probable de término. Negativa = el plan no cabe en la vigencia.
+- Historial de adendas: las Adendas 01 y 02 están CONCLUIDAS. Cada adenda tiene plazo otorgado y, cuando se conoce, plazo solicitado (p. ej. se solicitaron 180 días y se otorgaron 60). Los días sin cobertura son los que hay entre el fin de una adenda y el inicio de la siguiente; si las vigencias se superponen es una inconsistencia de datos. Usa consultar_historial_adendas para responder sobre ello; no inventes plazos.
 - Clasificación de actividades frente a la línea base: ALINEADA, REASIGNADA (venía de otro consultor), NUEVA (fuera de línea base: requiere Acta de Control de Cambios aprobada antes de la conformidad) y TRANSVERSAL (soporte).
 - Si una actividad no tiene avance registrado, el pronóstico asume que no se ejecutó: dilo explícitamente y recomienda registrar el avance real antes de sacar conclusiones.
 
@@ -76,6 +77,11 @@ const HERRAMIENTAS = [
       },
       required: ['cambios'],
     },
+  },
+  {
+    name: 'consultar_historial_adendas',
+    description: 'Historial de adendas de un consultor (clave) o de todos: número, estado (CONCLUIDA, FIRMADA, etc.), inicio, fin, plazo otorgado frente al solicitado, fecha de suscripción, si el inicio es calculado, observación, y la cobertura entre adendas (días sin cobertura y superposiciones).',
+    input_schema: { type: 'object', properties: { clave: { type: 'string', description: 'Opcional; sin clave devuelve todos los consultores' } } },
   },
   {
     name: 'consultar_bitacora',
@@ -160,7 +166,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
         fecha_corte: ff(det.corte),
         consultor: { clave: det.consultor.clave, nombres: det.consultor.nombres, perfil: det.consultor.perfil, recurso_cronograma: det.consultor.recurso_cronograma, observacion: det.consultor.observacion },
         contrato: det.contrato && { contrato_id: det.contrato.contrato_id, numero: det.contrato.numero, titulo_tdr: det.contrato.titulo_tdr, expediente: det.contrato.expediente },
-        adendas: det.adendas.map((a) => ({ adenda_id: a.adenda_id, numero: a.numero, estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin), documento: a.documento_ref, observacion: a.observacion })),
+        adendas: det.adendas.map((a) => ({ adenda_id: a.adenda_id, numero: a.numero, estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin), plazo_otorgado_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null, documento: a.documento_ref, observacion: a.observacion })),
         vigencia: { ...det.vigencia, adenda_vigente: undefined, adenda_siguiente: undefined, fin_vigencia: ff(det.vigencia.fin_vigencia), fin_vigencia_potencial: ff(det.vigencia.fin_vigencia_potencial) },
         plan: det.plan && { plan_id: det.plan.plan_id, nombre: det.plan.nombre, estado: det.plan.estado, tipo_dias: det.plan.tipo_dias, fuente: det.plan.fuente },
         pronostico_plan: det.pronostico && { fin_plan: ff(det.pronostico.fin_plan), fin_probable: ff(det.pronostico.fin_probable), avance_real: det.pronostico.avance_ponderado, avance_esperado: det.pronostico.avance_esperado, spi: det.pronostico.spi },
@@ -193,6 +199,27 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       };
     },
 
+    async consultar_historial_adendas({ clave }) {
+      const c = clave ? await porClave(clave) : null;
+      const e = await servicio.estado();
+      // Solo se expone lo contractual: ni DNI, teléfono ni correo (regla 8).
+      return e.consultores.filter((it) => !c || it.consultor.consultor_id === c.consultor_id).map((it) => ({
+        clave: it.consultor.clave, nombres: it.consultor.nombres, contrato: it.contrato && it.contrato.numero,
+        adendas: it.adendas.filter((a) => a.estado !== 'ANULADA').sort((a, b) => a.numero - b.numero).map((a) => ({
+          numero: a.numero, estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin),
+          plazo_otorgado_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null,
+          diferencia_dias: a.plazo_dias != null && a.plazo_solicitado_dias != null ? a.plazo_solicitado_dias - a.plazo_dias : null,
+          fecha_suscripcion: a.fecha_suscripcion ? ff(a.fecha_suscripcion) : null,
+          inicio_calculado: a.inicio_calculado === null || a.inicio_calculado === undefined ? null : !!a.inicio_calculado,
+          observacion: a.observacion,
+        })),
+        cobertura: {
+          dias_sin_cobertura: it.cobertura.dias_sin_cobertura, consistente: it.cobertura.consistente,
+          tramos: it.cobertura.tramos.map((t) => ({ entre_adendas: `${t.anterior} y ${t.siguiente}`, tipo: t.tipo, dias: t.dias, desde: t.desde && ff(t.desde), hasta: t.hasta && ff(t.hasta) })),
+        },
+      }));
+    },
+
     async consultar_bitacora({ clave, limite = 20 }) {
       const c = clave ? await porClave(clave) : null;
       // Regla 8: el modelo nunca recibe datos personales, ni siquiera cuando el usuario es ADMIN.
@@ -214,8 +241,42 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     },
   };
 
+  /**
+   * Perfil PROFESIONAL: cada herramienta se acota a su propio consultor. El modelo nunca recibe información
+   * de otros profesionales ni indicadores del portafolio completo, aunque se le pida o se manipule la consulta.
+   */
+  async function ejecutarAcotado(nombre, entrada, ctx) {
+    const d = await servicio.datos();
+    const propio = d.consultores.find((c) => c.consultor_id === ctx.ambito.consultor_id);
+    if (!propio) throw new Error('Su cuenta no está vinculada a un profesional');
+    const ajena = 'Solo puede consultar su propia información.';
+    if (['detalle_consultor', 'listar_alertas', 'consultar_bitacora', 'consultar_historial_adendas'].includes(nombre)) {
+      if (entrada.clave && String(entrada.clave).toUpperCase() !== propio.clave.toUpperCase()) throw new Error(ajena);
+      return EJECUTORES[nombre]({ ...entrada, clave: propio.clave }, ctx);
+    }
+    if (nombre === 'resumen_portafolio') {
+      const r = await EJECUTORES[nombre](entrada, ctx);
+      return { fecha_corte: r.fecha_corte, metodo: r.metodo, consultores: r.consultores.filter((c) => c.clave === propio.clave) };
+    }
+    if (nombre === 'simular_cambios') {
+      const planes = new Set(d.planes.filter((p) => p.consultor_id === propio.consultor_id).map((p) => p.plan_id));
+      for (const c of entrada.cambios || []) {
+        const a = d.actividades.find((x) => x.actividad_id === Number(c.actividad_id));
+        if (!a || !planes.has(a.plan_id)) throw new Error(ajena);
+      }
+      const { indicadores_antes: _a, indicadores_despues: _d, ...resto } = await EJECUTORES[nombre](entrada, ctx); // esos indicadores son de todo el portafolio
+      return resto;
+    }
+    throw new Error(`La herramienta ${nombre} no está disponible para su perfil`);
+  }
+
   async function conversar({ conversacion_id, texto, usuario, consultor_id }) {
     const api = obtenerCliente();
+    const ambito = usuario.rol === 'PROFESIONAL' ? { consultor_id: usuario.consultor_id } : null;
+    if (ambito) {
+      if (!ambito.consultor_id) throw Object.assign(new Error('Su cuenta no está vinculada a un profesional'), { estado: 403 });
+      consultor_id = ambito.consultor_id; // la pantalla de contexto siempre es la propia
+    }
     let conv = conversacion_id ? await servicio.repo.obtenerConversacion(conversacion_id) : null;
     if (conv && conv.usuario !== usuario.correo) throw Object.assign(new Error('Conversación no encontrada'), { estado: 404 });
     if (!conv) conv = await servicio.repo.crearConversacion(usuario.correo, texto.slice(0, 120));
@@ -234,7 +295,10 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     ];
     await servicio.repo.agregarMensaje({ conversacion_id: conv.conversacion_id, rol: 'user', contenido_json: { texto } });
 
-    const ctx = { conversacion_id: conv.conversacion_id, usuario: usuario.correo, propuestas: [] };
+    const ctx = { conversacion_id: conv.conversacion_id, usuario: usuario.correo, propuestas: [], ambito };
+    const propio = ambito ? datosParam.consultores.find((c) => c.consultor_id === ambito.consultor_id) : null;
+    const aviso = propio ? `\n\nPERFIL PROFESIONAL: esta persona es ${propio.nombres} (clave ${propio.clave}). Responda únicamente sobre su propia información (su vigencia, adendas, plan, actividades, alertas y bitácora). Si pregunta por otros profesionales o por el portafolio, indique que su perfil solo permite consultar su propia información. No proponga cambios: puede actualizar el estado y el avance de sus actividades desde su ficha.` : '';
+    const herramientas = ambito ? HERRAMIENTAS.filter((t) => t.name !== 'proponer_cambios') : HERRAMIENTAS;
     const uso = { entrada: 0, salida: 0 };
     const herramientasUsadas = [];
     let respuesta;
@@ -242,8 +306,8 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       respuesta = await api.messages.create({
         model: modelo,
         max_tokens: config.ia.maxTokens,
-        system: [{ type: 'text', text: `${SISTEMA}\n\nFecha de corte vigente: ${ff(hoy)}. Usuario: ${usuario.nombre} (rol ${usuario.rol}).`, cache_control: { type: 'ephemeral' } }],
-        tools: HERRAMIENTAS,
+        system: [{ type: 'text', text: `${SISTEMA}\n\nFecha de corte vigente: ${ff(hoy)}. Usuario: ${usuario.nombre} (rol ${usuario.rol}).${aviso}`, cache_control: { type: 'ephemeral' } }],
+        tools: herramientas,
         messages: mensajes,
       });
       uso.entrada += (respuesta.usage.input_tokens || 0) + (respuesta.usage.cache_read_input_tokens || 0) + (respuesta.usage.cache_creation_input_tokens || 0);
@@ -255,8 +319,8 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
         herramientasUsadas.push(b.name);
         let salida;
         try {
-          if (!EJECUTORES[b.name]) throw new Error(`Herramienta desconocida: ${b.name}`);
-          salida = await EJECUTORES[b.name](b.input || {}, ctx);
+          if (!EJECUTORES[b.name] || (ambito && b.name === 'proponer_cambios')) throw new Error(`Herramienta desconocida: ${b.name}`);
+          salida = ambito ? await ejecutarAcotado(b.name, b.input || {}, ctx) : await EJECUTORES[b.name](b.input || {}, ctx);
         } catch (err) {
           salida = { error: err.message };
         }
