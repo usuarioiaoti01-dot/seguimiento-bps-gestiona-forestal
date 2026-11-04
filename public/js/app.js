@@ -2,6 +2,7 @@
 import { api, estado, esc, aviso, fallo, ICONOS, modal, esProfesional, NOMBRE_PERFIL } from './util.js';
 import { vistaTablero } from './vistas/tablero.js';
 import { vistaConsultor } from './vistas/consultor.js';
+import { vistaSeguimiento } from './vistas/seguimiento.js';
 import { vistaAdendas } from './vistas/adendas.js';
 import { vistaLineaBase } from './vistas/lineabase.js';
 import { vistaBitacora } from './vistas/bitacora.js';
@@ -12,7 +13,8 @@ const raiz = document.getElementById('app');
 
 const RUTAS = [
   { patron: /^#?\/?$/, vista: vistaTablero, menu: 'tablero' },
-  { patron: /^#\/consultor\/(\d+)$/, vista: vistaConsultor, menu: 'tablero' },
+  { patron: /^#\/seguimiento(?:\/(atrasadas|exceden))?$/, vista: vistaSeguimiento, menu: 'seguimiento' },
+  { patron: /^#\/consultor\/(\d+)$/, vista: vistaConsultor, menu: 'seguimiento' },
   { patron: /^#\/adendas$/, vista: vistaAdendas, menu: 'adendas' },
   { patron: /^#\/linea-base$/, vista: vistaLineaBase, menu: 'lb' },
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },
@@ -64,8 +66,9 @@ function estructura() {
     <aside class="lateral">
       <div class="logo">${ICONOS.logo}<div><b>TABLERO SEGUIMIENTO ACTIVIDADES GESTIONA FORESTAL - 2026</b><small>Gestiona Forestal · PI2 Bosques</small></div></div>
       <nav class="menu">${esProfesional() ? `
-        <a href="#/consultor/${u.consultor_id}" data-menu="tablero">${ICONOS.tablero}Mi información</a>` : `
+        <a href="#/consultor/${u.consultor_id}" data-menu="seguimiento">${ICONOS.tablero}Mi información</a>` : `
         <a href="#/" data-menu="tablero">${ICONOS.tablero}Gestión Adendas</a>
+        <a href="#/seguimiento" data-menu="seguimiento">${ICONOS.seguimiento}Seguimiento Actividades</a>
         <a href="#/adendas" data-menu="adendas">${ICONOS.adendas}Contratos y adendas</a>
         <a href="#/linea-base" data-menu="lb">${ICONOS.lb}Línea base 2026</a>
         <a href="#/bitacora" data-menu="bitacora">${ICONOS.bitacora}Bitácora</a>

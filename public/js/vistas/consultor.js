@@ -41,7 +41,7 @@ export async function vistaConsultor(el, [id]) {
       <div class="mut2">${esc(k.titulo_tdr || '')}${c.recurso_cronograma ? ` · Recurso en cronograma: ${esc(c.recurso_cronograma)}` : ''}</div></div></div>
     <div class="acciones">${badge(v.semaforo)}
       ${estado.ia ? '<button class="btn" id="b-ia">Preguntar al asistente</button>' : ''}
-      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : '<a class="btn" href="#/">← Gestión Adendas</a>'}</div>
+      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : '<a class="btn" href="#/seguimiento">← Seguimiento Actividades</a>'}</div>
   </div></div>
 
   <div class="rejilla-2">

@@ -68,6 +68,7 @@ npm run bd:instalar    # ejecuta db/01 a db/07 en orden (06 y 07 antes de la ver
 | **Contratos y adendas** | Vista consolidada con situación al corte. |
 | **Línea base 2026** | Cobertura de los 62 entregables (concluido / cubierto / no cubierto) y anotaciones de la OTI. |
 | **Bitácora** | Quién, cuándo, qué (antes → después), por qué y origen (UI / IA / script). |
+| **Seguimiento Actividades** | Tarjetas de avance, días de atraso, actividades sin inicio y plan aprobado; tabla de profesionales; **Cargar documento**: Excel/CSV con plantilla, cronogramas (Excel o XML de MS Project) y PDF/Word (leídos por el asistente de IA) con vista previa y confirmación antes de actualizar actividades, avance, adendas y planes. |
 | **Configuración** | Parámetros del pronóstico, feriados, usuarios y perfiles (alta de las cuentas de los profesionales, restablecer claves, desactivar cuentas), consumo de tokens del asistente. |
 | **Asistente IA** | Consulta datos con herramientas, explica desvíos, simula, redacta correos o párrafos, y propone cambios que el usuario aplica. |
 

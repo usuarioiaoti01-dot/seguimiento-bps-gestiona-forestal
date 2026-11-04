@@ -197,3 +197,39 @@ test('alertas: los días sin cobertura generan una alerta ALTA y la superposici�
   assert.equal(sup.prioridad, 'MEDIA');
   assert.match(sup.titulo, /Inconsistencia/);
 });
+
+// ---------------------------------------------------------------- indicadores de Seguimiento Actividades
+test('indicadores: días de atraso, actividades sin inicio y planes aprobados', () => {
+  const corte = '2026-11-04';
+  const hoy = aDia(corte);
+  const hojas = semilla.actividades.filter((a) => !a.es_resumen && a.estado !== 'ANULADA');
+  const esperadoDias = hojas.filter((a) => a.estado !== 'CONCLUIDA' && Number(a.avance) < 100 && aDia(a.fin_plan) < hoy).reduce((s, a) => s + (hoy - aDia(a.fin_plan)), 0);
+  const esperadoSin = hojas.filter((a) => a.estado !== 'CONCLUIDA' && (a.estado === 'PENDIENTE' || Number(a.avance) === 0)).length;
+  const k = construirEstado(semilla, { corte }).indicadores;
+  assert.equal(k.dias_atraso, esperadoDias);
+  assert.equal(k.actividades_sin_inicio, esperadoSin);
+  assert.ok(k.dias_atraso > 0 && k.actividades_vencidas > 0);
+  assert.equal(k.planes_aprobados, 0, 'ningún plan está aprobado todavía');
+
+  // concluir una actividad vencida resta exactamente sus días; con avance deja de ser «sin inicio»
+  const copia = JSON.parse(JSON.stringify(semilla));
+  const vencida = copia.actividades.find((a) => !a.es_resumen && a.estado === 'PENDIENTE' && Number(a.avance) === 0 && aDia(a.fin_plan) < hoy);
+  const dias = hoy - aDia(vencida.fin_plan);
+  vencida.estado = 'CONCLUIDA'; vencida.avance = 100;
+  const k2 = construirEstado(copia, { corte }).indicadores;
+  assert.equal(k2.dias_atraso, esperadoDias - dias);
+  assert.equal(k2.actividades_sin_inicio, esperadoSin - 1);
+  assert.equal(k2.actividades_vencidas, k.actividades_vencidas - 1);
+
+  // las actividades anuladas y los resúmenes no cuentan
+  const c3 = JSON.parse(JSON.stringify(semilla));
+  c3.actividades.filter((a) => !a.es_resumen).forEach((a) => { a.estado = 'ANULADA'; });
+  const k3 = construirEstado(c3, { corte }).indicadores;
+  assert.equal(k3.dias_atraso, 0);
+  assert.equal(k3.actividades_sin_inicio, 0);
+
+  // planes aprobados
+  const c4 = JSON.parse(JSON.stringify(semilla));
+  c4.planes[0].estado = 'APROBADO'; c4.planes[1].estado = 'APROBADO';
+  assert.equal(construirEstado(c4, { corte }).indicadores.planes_aprobados, 2);
+});

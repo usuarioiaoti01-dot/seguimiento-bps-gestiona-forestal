@@ -13,6 +13,8 @@ const { crearAgente } = require('./ia/agente');
 const seg = require('./seguridad');
 const { hoyLima } = require('./motor/calendario');
 const { crearPlanesPdf } = require('./planes-pdf');
+const { crearDocumentos } = require('./documentos');
+const { plantillaXlsx } = require('./documentos/plantilla');
 
 async function crearApp() {
   const repo = await crearRepositorio();
@@ -80,6 +82,7 @@ async function crearApp() {
   });
 
   const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
+  const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, extraerConIA: (a) => agente.extraerDocumento(a) });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
   const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
 
@@ -321,6 +324,22 @@ async function crearApp() {
     await repo.eliminarFeriado(req.params.fecha, req.usuario.correo);
     await servicio.recalcularYGuardar(req.usuario.correo, 'Calendario actualizado');
   }));
+
+  // ------------------------------------------------------------ carga de documentos (Jefe de Proyecto y Administrador)
+  const MAX_DOCUMENTO = 15 * 1024 * 1024;
+  app.get('/api/documentos/plantilla.xlsx', seg.requiere('JEFE_PROYECTO'), (req, res, next) => {
+    plantillaXlsx().then((buf) => {
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="plantilla-actualizacion.xlsx"', 'Cache-Control': 'no-store' });
+      res.send(buf);
+    }).catch(next);
+  });
+  app.post('/api/documentos/previsualizar', seg.requiere('JEFE_PROYECTO'), express.raw({ type: 'application/octet-stream', limit: MAX_DOCUMENTO }), h(async (req) => {
+    let nombre = '';
+    try { nombre = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ }
+    if (!nombre) throw Object.assign(new Error('Falta el nombre del archivo'), { estado: 400 });
+    return documentos.previsualizar({ buffer: req.body, nombre: nombre.slice(0, 200), usuario: req.usuario, consultor_id: req.get('X-Profesional') || null });
+  }));
+  app.post('/api/documentos/aplicar', seg.requiere('JEFE_PROYECTO'), h((req) => documentos.aplicar({ carga_id: req.body && req.body.carga_id, ids: req.body && req.body.ids, usuario: req.usuario })));
 
   // ------------------------------------------------------------ asistente de IA
   app.post('/api/ia/mensaje', seg.requiere('LECTOR'), h(async (req) => {

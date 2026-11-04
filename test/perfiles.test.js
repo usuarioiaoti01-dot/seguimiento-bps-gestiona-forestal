@@ -39,6 +39,7 @@ function cliente() {
     }
     return ing;
   };
+  llamar.cookie = () => cookie;
   return llamar;
 }
 
@@ -244,4 +245,47 @@ test('las acciones sobre cuentas quedan en la bitácora y nunca con claves', asy
   const claves = Object.values(globalThis.__claves).map((x) => x.clave_temporal);
   assert.ok(!claves.some((k) => todo.includes(k)), 'ninguna clave temporal en la bitácora');
   assert.ok(!/\$2[aby]\$/.test(todo), 'ningún hash de clave en la bitácora');
+});
+
+test('carga de documentos: solo Jefe de Proyecto y Administrador; vista previa, aplicación y bitácora por HTTP', async () => {
+  const subir = (c, cuerpo, nombre = 'avance.csv', extra = {}) => fetch(`${base}/api/documentos/previsualizar`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-SGF': '1', 'X-Nombre': encodeURIComponent(nombre), Cookie: c.cookie(), ...extra }, body: cuerpo });
+
+  // el Profesional no entra a ninguna ruta de documentos
+  const x = globalThis.__claves.APA;
+  const p = cliente(); await p.entrar(x.correo, x.clave_temporal);
+  assert.equal((await subir(p, Buffer.from('clave;numero;avance;;APA;1;10;;'.replace(/;;/g, String.fromCharCode(10))))).status, 403);
+  assert.equal((await p('POST', '/api/documentos/aplicar', { carga_id: 'x', ids: ['c1'] })).estado, 403);
+  assert.equal((await fetch(`${base}/api/documentos/plantilla.xlsx`, { headers: { Cookie: p.cookie() } })).status, 403);
+  assert.equal((await fetch(`${base}/api/documentos/plantilla.xlsx`)).status, 401);
+
+  const j = (await admin('POST', '/api/usuarios', { correo: 'jefe.docs@ejemplo.com', nombre: 'Jefe Docs', rol: 'JEFE_PROYECTO' })).cuerpo;
+  const jefe = cliente(); await jefe.entrar('jefe.docs@ejemplo.com', j.clave_temporal);
+  const plantilla = await fetch(`${base}/api/documentos/plantilla.xlsx`, { headers: { Cookie: jefe.cookie() } });
+  assert.equal(plantilla.status, 200);
+  assert.match(plantilla.headers.get('content-type'), /spreadsheetml/);
+  assert.equal(Buffer.from(await plantilla.arrayBuffer()).subarray(0, 2).toString(), 'PK');
+
+  const det = (await jefe('GET', `/api/consultores/${ids.ERB}`)).cuerpo;
+  const act = det.actividades.find((a) => !a.es_resumen);
+  const csv = Buffer.from(['clave;numero;avance;estado', `ERB;${act.numero};45;En curso`, ''].join(String.fromCharCode(10)));
+  assert.equal((await subir(jefe, Buffer.from('x'), 'virus.exe')).status, 400);
+  assert.equal((await subir(jefe, Buffer.alloc(0), 'vacio.csv')).status, 400);
+  assert.equal((await subir(jefe, csv, '')).status, 400, 'sin nombre de archivo');
+  const prev = await (await subir(jefe, csv)).json();
+  assert.equal(prev.resumen.modificar, 1);
+  assert.deepEqual(prev.cambios[0].diffs.map((d) => [d.campo, d.antes, d.despues]).filter((d) => d[0] === 'avance'), [['avance', Number(act.avance), 45]]);
+  // la vista previa no cambió nada
+  assert.equal(Number((await jefe('GET', `/api/consultores/${ids.ERB}`)).cuerpo.actividades.find((a) => a.actividad_id === act.actividad_id).avance), Number(act.avance));
+
+  assert.equal((await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: [] })).estado, 400);
+  const ap = await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: prev.cambios.map((c) => c.id) });
+  assert.equal(ap.estado, 200, JSON.stringify(ap.cuerpo));
+  assert.equal(ap.cuerpo.aplicados.length, 1);
+  const luego = (await jefe('GET', `/api/consultores/${ids.ERB}`)).cuerpo.actividades.find((a) => a.actividad_id === act.actividad_id);
+  assert.equal(Number(luego.avance), 45);
+  const bit = (await jefe('GET', `/api/bitacora?consultor_id=${ids.ERB}`)).cuerpo;
+  assert.ok(bit.some((b) => b.motivo === 'Carga del documento «avance.csv»' && b.usuario === 'jefe.docs@ejemplo.com'));
+  assert.ok((await jefe('GET', '/api/bitacora?entidad=documento')).cuerpo.some((b) => /"aplicados":1/.test(b.cambios_json)));
+  assert.equal((await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: ['c1'] })).estado, 404, 'no se aplica dos veces');
 });

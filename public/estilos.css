@@ -260,3 +260,8 @@ select.en-linea { max-width: 128px; }
 .paginador { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--borde); }
 .paginador .acciones { display: flex; gap: 4px; flex-wrap: wrap; }
 .paginador .btn[disabled] { opacity: .45; cursor: default; }
+
+/* Tarjetas de Seguimiento Actividades: título en mayúsculas, valor centrado */
+.kpi .t { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--texto-2); margin-bottom: 6px; }
+.kpi .v { display: block; }
+.kpi .v.texto { font-size: 18px; line-height: 1.25; padding: 4px 0; }

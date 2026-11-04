@@ -25,6 +25,7 @@ Usuario principal: Director de TI (perfil ADMIN, `mmontoya@serfor.gob.pe`). Perf
 | `herramientas/generar_historial.py` | Lee el CSV del historial de adendas, lo fusiona en `data/semilla.json` y genera `db/06_historial_adendas.sql`. |
 | `server/motor/` | `calendario.js`, `recalculo.js` (pronóstico), `estado.js` (vigencia, alertas, indicadores), `cobertura.js` (días sin cobertura y superposiciones entre adendas). Funciones **puras**. |
 | `server/datos/` | Repositorios con la misma interfaz: `sqlserver.js` (producción) y `memoria.js` (demo/pruebas). `entidades.js` = lista blanca de columnas. |
+| `server/documentos/` | Carga de documentos (Excel/CSV/XML de MS Project/PDF/Word): `lector.js`, `interprete.js` (cambios propuestos, función pura), `index.js` (vista previa y aplicación), `plantilla.js`, `pdf-trabajador.js` (PDF en proceso aparte). |
 | `server/servicio.js` | Reglas de negocio y validaciones. **Toda escritura pasa por aquí** (API y asistente). |
 | `server/ia/agente.js` | Herramientas del asistente, prompt de sistema y aplicación de propuestas. |
 | `server/server.js` | Rutas Express, sesión y seguridad. |
@@ -47,6 +48,7 @@ Usuario principal: Director de TI (perfil ADMIN, `mmontoya@serfor.gob.pe`). Perf
 9. **Perfiles y alcance**: el perfil, el vínculo con el consultor y el estado de la cuenta se leen de la base en cada petición (desactivar una cuenta o restablecer su clave surte efecto de inmediato). El alcance del PROFESIONAL se impone en el servidor (`server.js`, lista blanca de rutas y campos); la interfaz solo lo refleja. Las cuentas no se eliminan: se desactivan. Toda clave temporal se muestra una sola vez y obliga a cambiarla en el primer ingreso. El administrador principal (`ADMIN_CORREO`) no se degrada ni se desactiva.
 10. **Sin secretos en el código**: todo en `.env` (no versionado). No imprimir claves en registros.
 11. Toda regla nueva del motor lleva una prueba en `test/motor.test.js`. `npm test` debe pasar antes de cada entrega.
+12. **Carga de documentos** (Seguimiento Actividades → «Cargar documento», solo JEFE_PROYECTO/ADMIN): nunca cambia datos sin **vista previa y confirmación**; cada cambio pasa por `servicio.js` (validaciones, revisión optimista, recálculo) con el nombre del documento como motivo y el original se conserva (`DOCUMENTOS_DIR`, fuera del repositorio). Excel/CSV/XML de MS Project se interpretan sin IA; PDF/Word los lee el asistente, que solo devuelve filas (origen `IA`) y **antes se le quitan DNI, teléfonos y correos** (`redactarPersonales`). Los PDF se leen en un proceso aparte (`pdf-trabajador.js`).
 
 ## 4. Motor de recálculo (resumen; detalle en `server/motor/recalculo.js`)
 

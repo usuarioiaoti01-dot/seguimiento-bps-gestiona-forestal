@@ -127,7 +127,24 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
   return alertas.sort((a, b) => peso[a.prioridad] - peso[b.prioridad] || a.clave.localeCompare(b.clave));
 }
 
+/**
+ * Actividades de seguimiento (hojas, no anuladas) de un profesional, con dos medidas que no dependen de
+ * estimaciones: los días vencidos (corte − fin del plan, solo si siguen sin concluir) y si no tienen avance.
+ */
+function medidasActividades(it, hoy) {
+  const hojas = it.actividades.filter((a) => !a.es_resumen && a.estado !== 'ANULADA');
+  let dias = 0; let vencidas = 0; let sinInicio = 0;
+  for (const a of hojas) {
+    const concluida = a.estado === 'CONCLUIDA' || Number(a.avance) >= 100;
+    if (!concluida && aDia(a.fin_plan) < hoy) { dias += hoy - aDia(a.fin_plan); vencidas += 1; }
+    if (a.estado !== 'CONCLUIDA' && (a.estado === 'PENDIENTE' || Number(a.avance) === 0)) sinInicio += 1;
+  }
+  return { dias, vencidas, sinInicio };
+}
+
 function indicadores(items, alertas, corte) {
+  const hoy = aDia(corte);
+  const medidas = items.map((i) => medidasActividades(i, hoy));
   const conPlan = items.filter((i) => i.pronostico && i.pronostico.numero_actividades);
   const sum = (f) => conPlan.reduce((t, i) => t + f(i), 0);
   const peso = sum((i) => i.pronostico.numero_actividades);
@@ -140,6 +157,10 @@ function indicadores(items, alertas, corte) {
     actividades_atrasadas: sum((i) => Object.values(i.pronostico.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion) && !i.actividades.find((x) => x.actividad_id === a.actividad_id).es_resumen).length),
     avance_ponderado: peso ? Math.round((sum((i) => i.pronostico.avance_ponderado * i.pronostico.numero_actividades) / peso) * 10) / 10 : 0,
     avance_esperado: peso ? Math.round((sum((i) => i.pronostico.avance_esperado * i.pronostico.numero_actividades) / peso) * 10) / 10 : 0,
+    dias_atraso: medidas.reduce((t, m) => t + m.dias, 0), // suma de los días vencidos de las actividades sin concluir de todos los profesionales
+    actividades_vencidas: medidas.reduce((t, m) => t + m.vencidas, 0),
+    actividades_sin_inicio: medidas.reduce((t, m) => t + m.sinInicio, 0), // sin iniciar o sin avance registrado
+    planes_aprobados: items.filter((i) => i.plan && i.plan.estado === 'APROBADO').length,
     alertas_altas: alertas.filter((a) => a.prioridad === 'ALTA').length,
     alertas_total: alertas.length,
   };
