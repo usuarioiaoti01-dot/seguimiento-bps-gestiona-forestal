@@ -97,11 +97,16 @@ function textoDePdf(buf) {
     const salida = []; let vencido = false;
     const reloj = setTimeout(() => { vencido = true; hijo.kill('SIGKILL'); }, 30000);
     hijo.stdout.on('data', (t) => salida.push(t));
-    hijo.on('error', () => { clearTimeout(reloj); rechazar(error('No se pudo leer el PDF')); });
+    hijo.on('error', (e) => { clearTimeout(reloj); console.error('[documentos] PDF no se pudo iniciar:', e.message); rechazar(error('No se pudo leer el PDF')); });
     hijo.on('close', () => {
       clearTimeout(reloj);
       if (vencido) return rechazar(error('El PDF tardó demasiado en leerse'));
-      try { const r = JSON.parse(Buffer.concat(salida).toString('utf8')); return r.error ? rechazar(error('No se pudo leer el PDF')) : resolver(r.texto || ''); } catch { return rechazar(error('No se pudo leer el PDF')); }
+      try {
+        const lineas = Buffer.concat(salida).toString('utf8').trim().split(String.fromCharCode(10));
+        const r = JSON.parse(lineas[lineas.length - 1]); // la respuesta es la última línea
+        if (r.error) console.error('[documentos] PDF:', r.error);
+        return r.error ? rechazar(error('No se pudo leer el PDF')) : resolver(r.texto || '');
+      } catch (e) { console.error('[documentos] PDF sin respuesta válida:', String(e.message).slice(0, 200)); return rechazar(error('No se pudo leer el PDF')); }
     });
     hijo.stdin.on('error', () => {}); // el proceso pudo terminar antes de leer todo
     hijo.stdin.end(buf);
