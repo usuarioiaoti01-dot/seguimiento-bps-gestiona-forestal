@@ -10,6 +10,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-perf-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
 process.env.PLANES_PDF_DIR = path.join(tmp, 'planes-pdf');
+process.env.DOCUMENTOS_DIR = path.join(tmp, 'documentos');
 process.env.ADMIN_CORREO = 'admin.principal@serfor.gob.pe';
 process.env.ADMIN_CLAVE_INICIAL = 'ClavePrincipal2026';
 process.env.FECHA_CORTE_PRUEBA = '1';

@@ -11,7 +11,11 @@ const salir = (json) => process.stdout.write(String.fromCharCode(10) + json); //
 const trozos = [];
 process.stdin.on('data', (t) => trozos.push(t));
 process.stdin.on('end', () => {
-  require('pdf-parse/lib/pdf-parse.js')(Buffer.concat(trozos))
+  // pdf.js (dentro de pdf-parse) falla con un Buffer en Node 22 ("bad XRef entry"): se le pasa una copia en Uint8Array plano.
+  const entrada = Buffer.concat(trozos);
+  const datos = new Uint8Array(entrada.length);
+  datos.set(entrada);
+  require('pdf-parse/lib/pdf-parse.js')(datos)
     .then((r) => salir(JSON.stringify({ texto: r.text })))
     .catch((e) => salir(JSON.stringify({ error: String((e && e.message) || e) })));
 });
