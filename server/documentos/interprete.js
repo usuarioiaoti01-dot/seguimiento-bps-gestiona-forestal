@@ -8,6 +8,7 @@
  * Entrada canónica (`filas`): { actividades: [...], adendas: [...], planes: [...] } con las claves que fija
  * la plantilla; `tablasAFilas` convierte las hojas leídas (con encabezados libres) a esa forma.
  */
+const { aDia, aFecha: diaAIso } = require('../motor/calendario');
 
 const ESTADOS_ACTIVIDAD = { pendiente: 'PENDIENTE', 'en curso': 'EN_CURSO', concluida: 'CONCLUIDA', concluido: 'CONCLUIDA', terminada: 'CONCLUIDA', terminado: 'CONCLUIDA', completada: 'CONCLUIDA', completado: 'CONCLUIDA', suspendida: 'SUSPENDIDA', suspendido: 'SUSPENDIDA' };
 const ESTADOS_ADENDA = { anunciada: 'ANUNCIADA', 'en tramite': 'EN_TRAMITE', tramite: 'EN_TRAMITE', firmada: 'FIRMADA', anulada: 'ANULADA', concluida: 'CONCLUIDA' };
@@ -197,7 +198,7 @@ function interpretar(filas, datos) {
   for (const f of filas.adendas || []) {
     if (vacio(f.contrato) || vacio(f.numero)) { rechazar(f, 'Faltan el contrato y el N.° de adenda'); continue; }
     const texto = String(f.contrato).trim();
-    const contratos = datos.contratos.filter((k) => activo(k) && (k.numero === texto || k.numero.startsWith(`${texto}-`) || (/^\d{1,3}$/.test(texto) && k.numero.startsWith(`${texto.padStart(3, '0')}-`))));
+    const contratos = buscarContratos(texto, datos);
     if (contratos.length !== 1) { rechazar(f, contratos.length ? `El contrato «${texto}» es ambiguo` : `No existe el contrato «${texto}»`); continue; }
     const k = contratos[0];
     const n = aNumero(f.numero);
@@ -253,15 +254,123 @@ function interpretar(filas, datos) {
   return { cambios, rechazadas, sinCambios };
 }
 
+/** Contratos activos que corresponden al texto: número completo, su prefijo o sus 3 primeros dígitos (p. ej. «035»). */
+function buscarContratos(texto, datos) {
+  const t = String(texto).trim();
+  return datos.contratos.filter((k) => k.activo !== 0 && k.activo !== false && (k.numero === t || k.numero.startsWith(`${t}-`) || (/^\d{1,3}$/.test(t) && k.numero.startsWith(`${t.padStart(3, '0')}-`))));
+}
+
+const COBERTURAN = new Set(['FIRMADA', 'CONCLUIDA']); // mismas adendas que cuentan para la cobertura (motor/cobertura.js)
+const dosDigitos = (n) => String(n).padStart(2, '0');
+const ddmmaaaa = (s) => String(s).slice(0, 10).split('-').reverse().join('/');
+
+/**
+ * Documento de UNA adenda (PDF/Word leído por el asistente, o la hoja «Adendas»): igual que `interpretar` pero solo
+ * para adendas y con ayudas propias de este flujo:
+ *  - sin contrato en el documento, usa el único contrato del profesional elegido en pantalla;
+ *  - sin fechas pero con plazo otorgado, calcula el inicio (día siguiente al fin de la última adenda firmada o
+ *    concluida) y el fin (inicio + plazo − 1), y lo advierte; el inicio calculado queda marcado (`inicio_calculado`);
+ *  - una adenda nueva nace EN_TRAMITE (el usuario puede elegir otro estado en la vista previa; solo FIRMADA amplía la vigencia);
+ *  - advierte numeración saltada, plazo distinto de las fechas, días sin cobertura y superposiciones;
+ *  - si se eligió un profesional, rechaza el contrato que no sea suyo.
+ * Cada cambio lleva `vigente` (estado, documento y suscripción actuales) para que la pantalla los muestre y permita ajustarlos.
+ */
+function interpretarAdendas(filas, datos, { clave = null } = {}) {
+  const activo = (x) => x.activo !== 0 && x.activo !== false;
+  const elegido = clave ? datos.consultores.filter(activo).find((c) => String(c.clave).toUpperCase() === String(clave).trim().toUpperCase()) : null;
+  const propias = (contratoId) => datos.adendas.filter((a) => a.contrato_id === contratoId && activo(a));
+
+  const preparadas = (filas.adendas || []).map((f) => {
+    const g = { ...f, __calculado: [] };
+    if (vacio(g.contrato) && elegido) {
+      const suyos = datos.contratos.filter((k) => activo(k) && k.consultor_id === elegido.consultor_id);
+      if (suyos.length === 1) g.contrato = suyos[0].numero;
+    }
+    const ks = vacio(g.contrato) ? [] : buscarContratos(g.contrato, datos);
+    const n = aNumero(g.numero); const plazo = aNumero(g.plazo_dias);
+    if (ks.length !== 1 || !Number.isInteger(n) || !Number.isInteger(plazo) || plazo < 1) return g;
+    if (propias(ks[0].contrato_id).some((a) => Number(a.numero) === n)) return g; // ya existe: se compara tal cual
+    let inicio = aFecha(g.inicio);
+    if (inicio === null) {
+      const previas = propias(ks[0].contrato_id).filter((a) => COBERTURAN.has(a.estado) && a.fecha_fin && Number(a.numero) !== n);
+      if (previas.length) {
+        const tope = previas.reduce((m, a) => (aDia(a.fecha_fin) > aDia(m.fecha_fin) ? a : m));
+        inicio = diaAIso(aDia(tope.fecha_fin) + 1);
+        g.inicio = inicio;
+        g.__calculado.push(`inicio: el día siguiente al fin de la Adenda ${dosDigitos(tope.numero)} (${ddmmaaaa(tope.fecha_fin)})`);
+      }
+    }
+    if (inicio && vacio(g.fin)) { g.fin = diaAIso(aDia(inicio) + plazo - 1); g.__calculado.push('fin: inicio + plazo otorgado − 1'); }
+    return g;
+  });
+
+  const r = interpretar({ actividades: [], planes: [], adendas: preparadas }, datos);
+  const rechazadas = [...r.rechazadas];
+  const cambios = [];
+  for (const c of r.cambios) {
+    if (elegido && c.clave && String(c.clave).toUpperCase() !== String(elegido.clave).toUpperCase()) {
+      rechazadas.push({ hoja: c.hoja, fila: c.fila, motivo: `El contrato del documento corresponde a ${c.clave}, no al profesional elegido (${elegido.clave})` });
+      continue;
+    }
+    cambios.push(c);
+  }
+
+  for (const c of cambios) {
+    const origen = preparadas.find((p) => p.__fila === c.fila && p.__hoja === c.hoja) || {};
+    const actual = c.registro_id ? datos.adendas.find((a) => a.adenda_id === c.registro_id) : null;
+    const contratoId = actual ? actual.contrato_id : c.contrato_id;
+    const dia10 = (x) => (x ? String(x).slice(0, 10) : null);
+    c.vigente = actual ? { estado: actual.estado, documento_ref: actual.documento_ref ?? null, fecha_suscripcion: dia10(actual.fecha_suscripcion) } : {};
+    if (c.accion === 'CREAR') {
+      if (!c.campos.estado) { c.campos.estado = 'EN_TRAMITE'; c.diffs.unshift({ campo: 'estado', antes: null, despues: 'EN_TRAMITE' }); }
+      if (origen.__calculado && origen.__calculado.some((t) => t.startsWith('inicio'))) c.campos.inicio_calculado = 1;
+    }
+    for (const t of origen.__calculado || []) c.advertencias.push(`Calculado — ${t}`);
+
+    const numero = actual ? Number(actual.numero) : Number(c.campos.numero);
+    const ini = dia10(c.campos.fecha_inicio) || dia10(actual && actual.fecha_inicio);
+    const fin = dia10(c.campos.fecha_fin) || dia10(actual && actual.fecha_fin);
+    const otras = propias(contratoId).filter((a) => Number(a.numero) !== numero);
+    if (c.accion === 'CREAR' && otras.length) {
+      const ultimo = Math.max(...otras.map((a) => Number(a.numero)));
+      if (numero > ultimo + 1) c.advertencias.push(`Salta de la Adenda ${dosDigitos(ultimo)} a la ${dosDigitos(numero)}: ¿falta registrar alguna?`);
+      else if (numero < ultimo) c.advertencias.push(`Ya hay adendas posteriores registradas (hasta la ${dosDigitos(ultimo)})`);
+    }
+    const plazo = c.campos.plazo_dias ?? (actual && actual.plazo_dias);
+    if (plazo && ini && fin && !(origen.__calculado || []).length) {
+      const dias = aDia(fin) - aDia(ini) + 1;
+      if (dias !== Number(plazo)) c.advertencias.push(`El plazo indicado (${plazo} días) no coincide con las fechas del documento (${dias} días)`);
+    }
+    if (ini && fin) {
+      const cubren = otras.filter((a) => COBERTURAN.has(a.estado) && a.fecha_inicio && a.fecha_fin);
+      const antes = cubren.filter((a) => aDia(a.fecha_inicio) < aDia(ini));
+      if (antes.length) {
+        const prev = antes.reduce((m, a) => (aDia(a.fecha_fin) > aDia(m.fecha_fin) ? a : m));
+        const hueco = aDia(ini) - aDia(prev.fecha_fin) - 1;
+        if (hueco > 0) c.advertencias.push(`Quedan ${hueco} día(s) sin cobertura entre la Adenda ${dosDigitos(prev.numero)} (fin ${ddmmaaaa(prev.fecha_fin)}) y esta`);
+        else if (hueco < 0) c.advertencias.push(`Se superpone ${-hueco} día(s) con la Adenda ${dosDigitos(prev.numero)} (fin ${ddmmaaaa(prev.fecha_fin)})`);
+      }
+      const despues = cubren.filter((a) => aDia(a.fecha_inicio) > aDia(ini)).sort((x, y) => aDia(x.fecha_inicio) - aDia(y.fecha_inicio))[0];
+      if (despues) {
+        const hueco = aDia(despues.fecha_inicio) - aDia(fin) - 1;
+        if (hueco > 0) c.advertencias.push(`Quedan ${hueco} día(s) sin cobertura entre esta y la Adenda ${dosDigitos(despues.numero)} (inicio ${ddmmaaaa(despues.fecha_inicio)})`);
+        else if (hueco < 0) c.advertencias.push(`Se superpone ${-hueco} día(s) con la Adenda ${dosDigitos(despues.numero)} (inicio ${ddmmaaaa(despues.fecha_inicio)})`);
+      }
+    }
+  }
+  return { cambios, rechazadas, sinCambios: r.sinCambios };
+}
+
 /** Quita lo que no debe llegar al modelo de IA (regla 8): DNI, teléfonos y correos. */
 function redactarPersonales(texto) {
   let n = 0;
   const marca = () => { n += 1; return '[DATO PERSONAL OMITIDO]'; };
   const limpio = String(texto)
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, marca)
-    .replace(/(?<![\d/.-])(\+?51[\s-]?)?9\d{2}[\s-]?\d{3}[\s-]?\d{3}(?![\d/.-])/g, marca)
-    .replace(/(?<![\d/.-])\d{8}(?![\d/.-])/g, marca);
+    // un punto final («DNI 45678912.») no protege al número; sí lo protegen dígitos, «/» y «-» pegados (fechas, códigos) y «.» entre dígitos
+    .replace(/(?<!\d|[/-]|\d\.)(\+?51[\s-]?)?9\d{2}[\s-]?\d{3}[\s-]?\d{3}(?!\d|[/-]|\.\d)/g, marca)
+    .replace(/(?<!\d|[/-]|\d\.)\d{8}(?!\d|[/-]|\.\d)/g, marca);
   return { texto: limpio, omitidos: n };
 }
 
-module.exports = { norm, aFecha, aNumero, tablasAFilas, interpretar, redactarPersonales, SINONIMOS };
+module.exports = { norm, aFecha, aNumero, tablasAFilas, interpretar, interpretarAdendas, redactarPersonales, SINONIMOS };

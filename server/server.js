@@ -337,9 +337,9 @@ async function crearApp() {
     let nombre = '';
     try { nombre = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ }
     if (!nombre) throw Object.assign(new Error('Falta el nombre del archivo'), { estado: 400 });
-    return documentos.previsualizar({ buffer: req.body, nombre: nombre.slice(0, 200), usuario: req.usuario, consultor_id: req.get('X-Profesional') || null });
+    return documentos.previsualizar({ buffer: req.body, nombre: nombre.slice(0, 200), usuario: req.usuario, consultor_id: req.get('X-Profesional') || null, tipo: req.get('X-Tipo') === 'adenda' ? 'adenda' : null });
   }));
-  app.post('/api/documentos/aplicar', seg.requiere('JEFE_PROYECTO'), h((req) => documentos.aplicar({ carga_id: req.body && req.body.carga_id, ids: req.body && req.body.ids, usuario: req.usuario })));
+  app.post('/api/documentos/aplicar', seg.requiere('JEFE_PROYECTO'), h((req) => documentos.aplicar({ carga_id: req.body && req.body.carga_id, ids: req.body && req.body.ids, ajustes: req.body && req.body.ajustes, usuario: req.usuario })));
 
   // ------------------------------------------------------------ asistente de IA
   app.post('/api/ia/mensaje', seg.requiere('LECTOR'), h(async (req) => {

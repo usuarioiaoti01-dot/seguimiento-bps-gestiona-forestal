@@ -4,7 +4,7 @@
  * Todas las escrituras pasan por aquí: validan, aplican reglas de
  * consistencia, registran bitácora (vía repositorio) y disparan el recálculo.
  */
-const { aDia, hoyLima } = require('./motor/calendario');
+const { aDia, aFecha: diaAFecha, hoyLima } = require('./motor/calendario');
 const { recalcularPlan } = require('./motor/recalculo');
 const { construirEstado, coberturaLineaBase, parametro } = require('./motor/estado');
 const { ENTIDADES, filtrarColumnas } = require('./datos/entidades');
@@ -324,6 +324,7 @@ function crearServicio(repo) {
       if (!f.numero) f.numero = Math.max(0, ...d.adendas.filter((a) => a.contrato_id === k.contrato_id).map((a) => a.numero)) + 1;
       if (!f.estado) f.estado = 'EN_TRAMITE';
       if (!f.expediente) f.expediente = k.expediente;
+      if (!f.fecha_fin && f.fecha_inicio && f.plazo_dias) f.fecha_fin = diaAFecha(aDia(f.fecha_inicio) + Number(f.plazo_dias) - 1); // el fin se calcula con el plazo otorgado
       if (d.adendas.some((a) => a.contrato_id === k.contrato_id && Number(a.numero) === Number(f.numero))) throw error(409, `La Adenda N.° ${f.numero} ya existe para este contrato`);
       if (!f.fecha_inicio || !f.fecha_fin) throw error(400, 'Inicio y fin de la adenda son obligatorios');
     }

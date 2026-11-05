@@ -65,7 +65,7 @@ npm run bd:instalar    # ejecuta db/01 a db/07 en orden (06 y 07 antes de la ver
 |---|---|
 | **Tablero** | Indicadores, gráfico *vigencia vs. término probable*, semáforo por profesional, alertas priorizadas, exportación CSV, recálculo manual. Fecha de corte seleccionable (consulta "a fecha"). |
 | **Ficha del profesional** | Contrato y adendas (registrar / firmar / anular), plan de trabajo, actividades editables en línea (avance, estado) o en detalle (fechas, evidencia, predecesoras), cronograma plan vs. probable con líneas de corte y vigencia, ruta crítica, simulación "¿qué pasa si…?", adopción de fechas probables como reprogramación formal, línea base, actas de control de cambios, evolución del pronóstico, historial y bitácora. |
-| **Contratos y adendas** | Vista consolidada con situación al corte. |
+| **Contratos y adendas** | Vista consolidada con situación al corte. **Subir documento de adenda** (PDF/Word leído por el asistente, o Excel/CSV): propone contrato, N.° de adenda, plazos y fechas en una vista previa, donde se elige el estado antes de guardar (nueva = en trámite; solo firmada amplía la vigencia). **Agregar adenda** las registra a mano. |
 | **Línea base 2026** | Cobertura de los 62 entregables (concluido / cubierto / no cubierto) y anotaciones de la OTI. |
 | **Bitácora** | Quién, cuándo, qué (antes → después), por qué y origen (UI / IA / script). |
 | **Seguimiento Actividades** | Tarjetas de avance, días de atraso, actividades sin inicio y plan aprobado; tabla de profesionales; **Cargar documento**: Excel/CSV con plantilla, cronogramas (Excel o XML de MS Project) y PDF/Word (leídos por el asistente de IA) con vista previa y confirmación antes de actualizar actividades, avance, adendas y planes. |

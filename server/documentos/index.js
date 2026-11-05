@@ -11,7 +11,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { leer, extension } = require('./lector');
-const { tablasAFilas, interpretar } = require('./interprete');
+const { tablasAFilas, interpretar, interpretarAdendas } = require('./interprete');
+const { ESTADOS_ADENDA } = require('../servicio');
 
 const error = (estado, mensaje) => Object.assign(new Error(mensaje), { estado });
 const COLECCION = { actividad: 'actividades', adenda: 'adendas', plan_trabajo: 'planes' };
@@ -22,8 +23,10 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, ttlMs = 30 * 60000
 
   const limpiar = () => { const ahora = Date.now(); for (const [id, c] of cargas) if (ahora - c.creada > ttlMs) cargas.delete(id); };
 
-  async function previsualizar({ buffer, nombre, usuario, consultor_id }) {
+  /** `tipo: 'adenda'` = documento de una adenda (solo adendas; el asistente usa su lectura específica). */
+  async function previsualizar({ buffer, nombre, usuario, consultor_id, tipo = null }) {
     limpiar();
+    const deAdenda = tipo === 'adenda';
     const leido = await leer(buffer, nombre);
     const datos = await servicio.datos(true);
     const elegido = consultor_id ? datos.consultores.find((c) => c.consultor_id === Number(consultor_id)) : null;
@@ -33,19 +36,23 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, ttlMs = 30 * 60000
     if (leido.tipo === 'tablas') {
       const t = tablasAFilas(leido.hojas, { clave });
       filas = t.filas; rechazadas = t.rechazadas;
-      if (!filas.actividades.length && !filas.adendas.length && !filas.planes.length) {
+      if (deAdenda) {
+        if (!filas.adendas.length) throw error(400, 'El archivo no trae adendas. Use la hoja «Adendas» de la plantilla (contrato, N.° de adenda, plazo e inicio/fin)');
+        filas = { actividades: [], planes: [], adendas: filas.adendas };
+      } else if (!filas.actividades.length && !filas.adendas.length && !filas.planes.length) {
         throw error(400, 'No se encontraron filas para actualizar. Use la plantilla, o un cronograma con las columnas N.°, Nombre de tarea, Inicio, Fin y % completado');
       }
     } else {
       if (!extraerConIA) throw error(503, 'La lectura de PDF y Word requiere el asistente de IA, que no está configurado');
-      const r = await extraerConIA({ texto: leido.texto, usuario, clave });
+      const r = await extraerConIA({ texto: leido.texto, usuario, clave, ...(deAdenda ? { modo: 'adenda' } : {}) });
       filas = r.filas; origen = 'IA'; ia = { omitidos: r.omitidos, truncado: r.truncado };
+      if (deAdenda && !filas.adendas.length) throw error(400, 'No se encontró ninguna adenda en el documento. Compruebe que sea el documento de una adenda, con su contrato y su número');
     }
-    const r = interpretar(filas, datos);
+    const r = deAdenda ? interpretarAdendas(filas, datos, { clave }) : interpretar(filas, datos);
     const id = crypto.randomUUID();
-    cargas.set(id, { usuario: usuario.correo, nombre, buffer, formato: leido.formato, origen, cambios: r.cambios, creada: Date.now() });
+    cargas.set(id, { usuario: usuario.correo, nombre, buffer, formato: leido.formato, origen, tipo: deAdenda ? 'adenda' : null, cambios: r.cambios, creada: Date.now() });
     return {
-      carga_id: id, archivo: nombre, formato: leido.formato, origen, ia,
+      carga_id: id, archivo: nombre, formato: leido.formato, origen, ia, tipo: deAdenda ? 'adenda' : null,
       profesional: elegido ? { consultor_id: elegido.consultor_id, clave: elegido.clave, nombres: elegido.nombres } : null,
       resumen: { modificar: r.cambios.filter((c) => c.accion === 'MODIFICAR').length, crear: r.cambios.filter((c) => c.accion === 'CREAR').length, sin_cambios: r.sinCambios, rechazadas: rechazadas.length + r.rechazadas.length },
       cambios: r.cambios, rechazadas: [...rechazadas, ...r.rechazadas],
@@ -75,12 +82,22 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, ttlMs = 30 * 60000
     return servicio.actualizarEntidad('plan_trabajo', c.registro_id, { ...c.campos, revision: c.revision }, ctx);
   }
 
-  async function aplicar({ carga_id, ids, usuario }) {
+  /** Ajustes que el usuario hace en la vista previa de una adenda (estado, documento y suscripción); se validan antes de aplicar nada. */
+  function conAjustes(c, ajustes) {
+    const aj = ajustes && typeof ajustes === 'object' ? ajustes[c.id] : null;
+    if (c.entidad !== 'adenda' || !aj || typeof aj !== 'object') return c;
+    const extra = {};
+    for (const k of ['estado', 'documento_ref', 'fecha_suscripcion']) if (typeof aj[k] === 'string' && aj[k].trim()) extra[k] = aj[k].trim().slice(0, 300);
+    if (extra.estado && !ESTADOS_ADENDA.includes(extra.estado)) throw error(400, 'Estado de adenda no válido');
+    return { ...c, campos: { ...c.campos, ...extra } };
+  }
+
+  async function aplicar({ carga_id, ids, ajustes, usuario }) {
     limpiar();
     const carga = cargas.get(carga_id);
     if (!carga || carga.usuario !== usuario.correo) throw error(404, 'La vista previa venció: suba el documento otra vez');
     const elegidos = new Set(Array.isArray(ids) ? ids : []);
-    const seleccion = carga.cambios.filter((c) => elegidos.has(c.id));
+    const seleccion = carga.cambios.filter((c) => elegidos.has(c.id)).map((c) => conAjustes(c, ajustes));
     if (!seleccion.length) throw error(400, 'Seleccione al menos un cambio');
     const ctx = { usuario: usuario.correo, nombre: usuario.nombre, rol: usuario.rol, origen: carga.origen, motivo: `Carga del documento «${carga.nombre}»` };
     // primero las adendas y los planes, luego las actividades existentes y al final las nuevas
@@ -97,7 +114,7 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, ttlMs = 30 * 60000
     fs.writeFileSync(destino, carga.buffer);
     await repo.registrarBitacora({
       usuario: usuario.correo, entidad: 'documento', entidad_id: null, accion: 'CREAR', origen: carga.origen,
-      cambios_json: { archivo: carga.nombre, formato: carga.formato, sha256, bytes: carga.buffer.length, aplicados: aplicados.length, fallidos: fallidos.length, omitidos: carga.cambios.length - seleccion.length },
+      cambios_json: { archivo: carga.nombre, formato: carga.formato, tipo: carga.tipo || 'general', sha256, bytes: carga.buffer.length, aplicados: aplicados.length, fallidos: fallidos.length, omitidos: carga.cambios.length - seleccion.length },
       motivo: `Carga del documento «${carga.nombre}»`,
     });
     cargas.delete(carga_id);

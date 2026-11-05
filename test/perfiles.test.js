@@ -290,3 +290,31 @@ test('carga de documentos: solo Jefe de Proyecto y Administrador; vista previa, 
   assert.ok((await jefe('GET', '/api/bitacora?entidad=documento')).cuerpo.some((b) => /"aplicados":1/.test(b.cambios_json)));
   assert.equal((await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: ['c1'] })).estado, 404, 'no se aplica dos veces');
 });
+
+test('documento de adenda por HTTP: el Jefe de Proyecto revisa, ajusta el estado y guarda; queda en la bitácora', async () => {
+  const subir = (c, cuerpo, nombre, extra = {}) => fetch(`${base}/api/documentos/previsualizar`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-SGF': '1', 'X-Nombre': encodeURIComponent(nombre), Cookie: c.cookie(), ...extra }, body: cuerpo });
+  const j = (await admin('POST', '/api/usuarios', { correo: 'jefe.adendas@ejemplo.com', nombre: 'Jefe Adendas', rol: 'JEFE_PROYECTO' })).cuerpo;
+  const jefe = cliente(); await jefe.entrar('jefe.adendas@ejemplo.com', j.clave_temporal);
+
+  const de035 = async () => (await jefe('GET', '/api/adendas')).cuerpo.filter((a) => a.contrato.startsWith('035'));
+  const antes = (await de035()).length;
+  const sig = Math.max(...(await de035()).map((a) => a.numero)) + 1;
+  const csv = Buffer.from(['contrato;numero;plazo_dias;documento', `035;${sig};20;Adenda N.° ${sig} al Contrato 035`, ''].join(String.fromCharCode(10)));
+  const prev = await (await subir(jefe, csv, 'adenda-nueva.csv', { 'X-Tipo': 'adenda' })).json();
+  assert.equal(prev.tipo, 'adenda');
+  assert.equal(prev.resumen.crear, 1);
+  assert.equal(prev.cambios[0].campos.estado, 'EN_TRAMITE');
+  assert.equal((await de035()).length, antes, 'la vista previa no guarda nada');
+
+  const id = prev.cambios[0].id;
+  assert.equal((await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: [id], ajustes: { [id]: { estado: 'INVENTADA' } } })).estado, 400);
+  const ap = await jefe('POST', '/api/documentos/aplicar', { carga_id: prev.carga_id, ids: [id], ajustes: { [id]: { estado: 'ANUNCIADA' } } });
+  assert.equal(ap.estado, 200, JSON.stringify(ap.cuerpo));
+  assert.equal(ap.cuerpo.aplicados.length, 1);
+  const nueva = (await de035()).find((a) => a.numero === sig);
+  assert.equal(nueva.estado, 'ANUNCIADA');
+  assert.equal(nueva.plazo_dias, 20);
+  const bit = (await jefe('GET', '/api/bitacora?entidad=documento')).cuerpo;
+  assert.ok(bit.some((b) => /"tipo":"adenda"/.test(b.cambios_json)));
+});

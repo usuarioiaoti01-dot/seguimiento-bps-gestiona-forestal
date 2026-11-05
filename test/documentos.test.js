@@ -14,7 +14,7 @@ const { crearAgente } = require('../server/ia/agente');
 const { crearDocumentos } = require('../server/documentos');
 const { leer } = require('../server/documentos/lector');
 const { plantillaXlsx } = require('../server/documentos/plantilla');
-const { tablasAFilas, interpretar, redactarPersonales, aFecha } = require('../server/documentos/interprete');
+const { tablasAFilas, interpretar, interpretarAdendas, redactarPersonales, aFecha } = require('../server/documentos/interprete');
 const semilla = require('../data/semilla.json');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-doc-'));
@@ -328,4 +328,160 @@ test('el asistente no escribe: extraerDocumento solo devuelve filas', async () =
   const r = await agente.extraerDocumento({ texto: 'Plan de ERB aprobado', usuario, clave: null });
   assert.equal(r.filas.planes[0].estado, 'APROBADO');
   assert.equal(JSON.stringify((await servicio.datos(true)).planes), antes);
+});
+
+// ---------------------------------------------------------------- documento de una adenda (Contratos y adendas)
+const filaAd = (f) => ({ __hoja: 'Documento (IA) · adenda', __fila: 1, ...f });
+async function docx(texto) {
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  zip.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${texto}</w:t></w:r></w:p></w:body></w:document>`);
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+test('interpretarAdendas: sin fechas calcula inicio y fin con el plazo, nace EN_TRAMITE y lo advierte', async () => {
+  const { datos } = await entorno();
+  // contrato 035 (EBS): Adendas 01 y 02 concluidas y 03 firmada hasta el 31/12/2026
+  const r = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 4, plazo_dias: 30, documento: 'Adenda N.° 04 al Contrato N.° 035-2026-MIDAGRI-SERFOR-PKFW' })] }, datos);
+  assert.equal(r.cambios.length, 1);
+  const c = r.cambios[0];
+  assert.equal(c.accion, 'CREAR');
+  assert.equal(c.campos.fecha_inicio, '2027-01-01');
+  assert.equal(c.campos.fecha_fin, '2027-01-30');
+  assert.equal(c.campos.estado, 'EN_TRAMITE');
+  assert.equal(c.campos.inicio_calculado, 1);
+  assert.ok(c.diffs.some((d) => d.campo === 'estado' && d.despues === 'EN_TRAMITE'));
+  assert.ok(c.advertencias.some((a) => /Calculado — inicio: el día siguiente al fin de la Adenda 03 \(31\/12\/2026\)/.test(a)));
+  assert.ok(c.advertencias.some((a) => /Calculado — fin/.test(a)));
+  assert.equal(c.vigente.estado, undefined, 'una adenda nueva no tiene valores vigentes');
+});
+
+test('interpretarAdendas: advierte huecos, superposiciones, numeración saltada y plazo distinto de las fechas', async () => {
+  const { datos } = await entorno();
+  const hueco = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 6, inicio: '2027-01-07', fin: '2027-02-05', plazo_dias: 30 })] }, datos).cambios[0];
+  assert.ok(hueco.advertencias.some((a) => /Quedan 6 día\(s\) sin cobertura entre la Adenda 03/.test(a)), hueco.advertencias.join(' | '));
+  assert.ok(hueco.advertencias.some((a) => /Salta de la Adenda 03 a la 06/.test(a)));
+  assert.equal(hueco.campos.inicio_calculado, undefined, 'las fechas del documento no son calculadas');
+
+  const sup = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 4, inicio: '2026-12-20', fin: '2027-01-18', plazo_dias: 25 })] }, datos).cambios[0];
+  assert.ok(sup.advertencias.some((a) => /Se superpone 12 día\(s\) con la Adenda 03/.test(a)), sup.advertencias.join(' | '));
+  assert.ok(sup.advertencias.some((a) => /El plazo indicado \(25 días\) no coincide con las fechas del documento \(30 días\)/.test(a)));
+
+  // una adenda que ya existe se compara y se actualiza, y muestra sus valores vigentes
+  const ad3 = datos.adendas.find((a) => a.numero === 3 && datos.contratos.find((k) => k.contrato_id === a.contrato_id).numero.startsWith('035'));
+  const mod = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 3, plazo_dias: 52 })] }, datos).cambios[0];
+  assert.equal(mod.accion, 'MODIFICAR');
+  assert.equal(mod.registro_id, ad3.adenda_id);
+  assert.equal(mod.vigente.estado, 'FIRMADA');
+});
+
+test('interpretarAdendas: usa el único contrato del profesional elegido y rechaza el de otro', async () => {
+  const { datos } = await entorno();
+  const sinContrato = interpretarAdendas({ adendas: [filaAd({ numero: 4, plazo_dias: 30 })] }, datos, { clave: 'EBS' });
+  assert.equal(sinContrato.cambios.length, 1);
+  assert.equal(sinContrato.cambios[0].clave, 'EBS');
+  const ajeno = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 4, plazo_dias: 30 })] }, datos, { clave: 'ERB' });
+  assert.equal(ajeno.cambios.length, 0);
+  assert.match(ajeno.rechazadas[0].motivo, /corresponde a EBS, no al profesional elegido \(ERB\)/);
+  // sin contrato ni profesional, no hay a quién asignarla
+  assert.match(interpretarAdendas({ adendas: [filaAd({ numero: 4, plazo_dias: 30 })] }, datos).rechazadas[0].motivo, /Faltan el contrato/);
+});
+
+test('crear una adenda sin fin: se calcula con el plazo otorgado', async () => {
+  const { servicio } = await entorno();
+  const d = await servicio.datos(true);
+  const k = d.contratos.find((x) => x.numero.startsWith('035'));
+  const ctx = { usuario: 'jefe@ejemplo.com', motivo: 'Prueba', origen: 'UI' };
+  await servicio.crearEntidad('adenda', { contrato_id: k.contrato_id, fecha_inicio: '2030-01-01', plazo_dias: 10, estado: 'ANUNCIADA' }, ctx);
+  const nueva = (await servicio.datos(true)).adendas.find((a) => a.contrato_id === k.contrato_id && String(a.fecha_inicio).slice(0, 10) === '2030-01-01');
+  assert.equal(String(nueva.fecha_fin).slice(0, 10), '2030-01-10');
+  await assert.rejects(() => servicio.crearEntidad('adenda', { contrato_id: k.contrato_id, fecha_inicio: '2031-01-01' }, ctx), /Inicio y fin de la adenda son obligatorios/);
+});
+
+test('documento de adenda con IA: herramienta propia, vista previa sin escribir, ajuste del estado y origen IA', async () => {
+  const llamadas = []; let respuesta;
+  const cliente = { messages: { async create(req) { llamadas.push(req); return { stop_reason: 'tool_use', usage: { input_tokens: 300, output_tokens: 60 }, content: [{ type: 'tool_use', id: 't', name: 'registrar_adenda', input: respuesta }] }; } } };
+  const repo = crearRepositorioMemoria({ semilla });
+  const servicio = crearServicio(repo);
+  const agente = crearAgente({ servicio, cliente });
+  const docs = crearDocumentos({ servicio, repo, dir: path.join(tmp, 'ad'), extraerConIA: (a) => agente.extraerDocumento(a) });
+  const adendasDe = async () => (await servicio.datos(true)).adendas.length;
+  const antes = await adendasDe();
+  const buffer = await docx('Adenda N.° 04 al Contrato N.° 035-2026-MIDAGRI-SERFOR-PKFW. Ampliación de 30 días. Contacto: erick.privado@gmail.com, DNI 45678912.');
+
+  respuesta = { adendas: [{ contrato: '035-2026-MIDAGRI-SERFOR-PKFW', numero: 4, plazo_dias: 30, documento: 'Adenda N.° 04 al Contrato N.° 035-2026-MIDAGRI-SERFOR-PKFW' }] };
+  const prev = await docs.previsualizar({ buffer, nombre: 'adenda-04.docx', usuario, tipo: 'adenda' });
+  assert.equal(llamadas[0].tool_choice.name, 'registrar_adenda');
+  assert.match(llamadas[0].system, /ADENDA/);
+  assert.deepEqual(llamadas[0].tools.map((t) => t.name), ['registrar_adenda']);
+  assert.ok(!/45678912|erick\.privado/.test(JSON.stringify(llamadas)), 'sin datos personales hacia el modelo');
+  assert.equal(prev.tipo, 'adenda');
+  assert.equal(prev.origen, 'IA');
+  assert.equal(prev.resumen.crear, 1);
+  assert.equal(prev.cambios[0].campos.estado, 'EN_TRAMITE');
+  assert.equal(await adendasDe(), antes, 'la vista previa no escribe');
+
+  // un estado inventado se rechaza antes de aplicar nada
+  await assert.rejects(() => docs.aplicar({ carga_id: prev.carga_id, ids: [prev.cambios[0].id], ajustes: { [prev.cambios[0].id]: { estado: 'INVENTADA' } }, usuario }), /Estado de adenda no válido/);
+  assert.equal(await adendasDe(), antes);
+
+  // el usuario la deja FIRMADA en la vista previa; el documento extraído cumple la exigencia de referencia
+  const r = await docs.aplicar({ carga_id: prev.carga_id, ids: [prev.cambios[0].id], ajustes: { [prev.cambios[0].id]: { estado: 'FIRMADA', fecha_suscripcion: '2026-12-15' } }, usuario });
+  assert.equal(r.aplicados.length, 1, JSON.stringify(r.fallidos));
+  const datos = await servicio.datos(true);
+  const k = datos.contratos.find((x) => x.numero.startsWith('035'));
+  const nueva = datos.adendas.find((a) => a.contrato_id === k.contrato_id && a.numero === 4);
+  assert.equal(nueva.estado, 'FIRMADA');
+  assert.equal(String(nueva.fecha_inicio).slice(0, 10), '2027-01-01');
+  assert.equal(String(nueva.fecha_fin).slice(0, 10), '2027-01-30');
+  assert.equal(nueva.inicio_calculado, 1);
+  assert.equal(String(nueva.fecha_suscripcion).slice(0, 10), '2026-12-15');
+  // la vigencia se amplió con la adenda firmada
+  const est = await servicio.estado();
+  const e = est.consultores.find((c) => c.consultor.clave === 'EBS');
+  assert.equal(String(e.vigencia.fin_vigencia).slice(0, 10), '2027-01-30');
+  const bit = await repo.listarBitacora({ limite: 50 });
+  assert.ok(bit.some((b) => b.motivo === 'Carga del documento «adenda-04.docx»' && b.origen === 'IA'));
+  assert.ok(bit.some((b) => b.entidad === 'documento' && /"tipo":"adenda"/.test(b.cambios_json)));
+});
+
+test('documento de adenda: FIRMADA sin documento falla sin crear nada, y sin adendas en el documento se avisa', async () => {
+  let respuesta;
+  const cliente = { messages: { async create() { return { stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'tool_use', id: 't', name: 'registrar_adenda', input: respuesta }] }; } } };
+  const repo = crearRepositorioMemoria({ semilla });
+  const servicio = crearServicio(repo);
+  const agente = crearAgente({ servicio, cliente });
+  const docs = crearDocumentos({ servicio, repo, dir: path.join(tmp, 'ad2'), extraerConIA: (a) => agente.extraerDocumento(a) });
+  const antes = (await servicio.datos(true)).adendas.length;
+  const buffer = await docx('Solicitud de adenda al contrato 035, 30 días.');
+
+  respuesta = { adendas: [{ contrato: '035', numero: 4, plazo_dias: 30 }] }; // sin título del documento
+  const prev = await docs.previsualizar({ buffer, nombre: 'solicitud.docx', usuario, tipo: 'adenda' });
+  const r = await docs.aplicar({ carga_id: prev.carga_id, ids: [prev.cambios[0].id], ajustes: { [prev.cambios[0].id]: { estado: 'FIRMADA' } }, usuario });
+  assert.equal(r.aplicados.length, 0);
+  assert.match(r.fallidos[0].motivo, /FIRMADA requiere la referencia del documento/);
+  assert.equal((await servicio.datos(true)).adendas.length, antes);
+
+  respuesta = { adendas: [] };
+  await assert.rejects(() => docs.previsualizar({ buffer, nombre: 'otro.docx', usuario, tipo: 'adenda' }), /No se encontró ninguna adenda en el documento/);
+});
+
+test('documento de adenda en Excel: usa la hoja «Adendas»; sin ella, se explica qué falta', async () => {
+  const { docs } = await entorno();
+  const bien = await xlsx({ Adendas: [['contrato', 'numero', 'plazo_dias'], ['035', 4, 20]] });
+  const prev = await docs.previsualizar({ buffer: bien, nombre: 'adenda.xlsx', usuario, tipo: 'adenda' });
+  assert.equal(prev.origen, 'UI');
+  assert.equal(prev.cambios[0].campos.fecha_fin, '2027-01-20');
+  const solo = await xlsx({ Actividades: [['clave', 'numero', 'avance'], ['EBS', '1.1', 10]] });
+  await assert.rejects(() => docs.previsualizar({ buffer: solo, nombre: 'act.xlsx', usuario, tipo: 'adenda' }), /no trae adendas/);
+});
+
+test('redactarPersonales: un punto final no deja pasar el DNI ni el teléfono, y no toca fechas ni códigos', () => {
+  const r = redactarPersonales('DNI 45678912. Celular 987654321. Fecha 12.11.2026, código 2026-0045678912-X, versión 1234.5678');
+  assert.equal(r.omitidos, 2);
+  assert.ok(!/45678912\.|987654321/.test(r.texto.replace('0045678912', '')));
+  assert.match(r.texto, /12\.11\.2026/);
+  assert.match(r.texto, /2026-0045678912-X/);
+  assert.match(r.texto, /1234\.5678/);
 });

@@ -342,7 +342,7 @@ function coberturaAdendas(c) {
   return `<div>${lineas.join('') || '<div class="mut2">Vigencias contiguas: sin días sin cobertura entre adendas.</div>'}</div>`;
 }
 
-async function editarAdenda(a, d, editor) {
+export async function editarAdenda(a, d, editor) {
   const nueva = !a;
   const ultima = d.adendas[d.adendas.length - 1];
   a = a || { numero: ultima ? ultima.numero + 1 : 1, estado: 'EN_TRAMITE', fecha_inicio: ultima ? new Date((dia(ultima.fecha_fin) + 1) * 86400000).toISOString().slice(0, 10) : d.corte, fecha_fin: '', expediente: d.contrato && d.contrato.expediente };
@@ -353,7 +353,7 @@ async function editarAdenda(a, d, editor) {
       <div class="campo"><label>N.° de adenda</label><input type="number" name="numero" value="${esc(a.numero)}" ${dis}></div>
       <div class="campo"><label>Estado</label><select name="estado" ${dis}>${opciones([['ANUNCIADA', 'Anunciada (sin documento)'], ['EN_TRAMITE', 'En trámite'], ['FIRMADA', 'Firmada'], ['CONCLUIDA', 'Concluida'], ['ANULADA', 'Anulada']], a.estado)}</select></div>
       <div class="campo"><label>Inicio</label><input type="date" name="fecha_inicio" value="${esc(a.fecha_inicio || '')}" ${dis}></div>
-      <div class="campo"><label>Fin</label><input type="date" name="fecha_fin" value="${esc(a.fecha_fin || '')}" ${dis}></div>
+      <div class="campo"><label>Fin${nueva ? ' (si lo deja vacío: inicio + plazo otorgado − 1)' : ''}</label><input type="date" name="fecha_fin" value="${esc(a.fecha_fin || '')}" ${dis}></div>
       <div class="campo"><label>Fecha de suscripción</label><input type="date" name="fecha_suscripcion" value="${esc(a.fecha_suscripcion || '')}" ${dis}></div>
       <div class="campo"><label>Plazo otorgado (días)</label><input type="number" min="1" name="plazo_dias" value="${esc(a.plazo_dias ?? '')}" ${dis}></div>
       <div class="campo"><label>Plazo solicitado (días)</label><input type="number" min="1" name="plazo_solicitado_dias" value="${esc(a.plazo_solicitado_dias ?? '')}" ${dis}></div>
