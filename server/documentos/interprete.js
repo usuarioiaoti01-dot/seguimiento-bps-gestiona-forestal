@@ -212,8 +212,13 @@ function interpretar(filas, datos) {
       const x = aNumero(f[campo]); if (x === undefined || !Number.isInteger(x) || x < 1) error = `${campo}: debe ser un número entero de días («${f[campo]}»)`; else v[campo] = x;
     }
     if (!vacio(f.estado)) { const e = aEnum(f.estado, ESTADOS_ADENDA); if (!e) error = `estado no válido «${f.estado}»`; else v.estado = e; }
-    if (!vacio(f.documento)) v.documento_ref = String(f.documento).trim();
-    for (const campo of ['expediente', 'observacion']) if (!vacio(f[campo])) v[campo] = String(f[campo]).trim();
+    const recortes = []; // el modelo puede devolver el título completo del documento: se ajusta al largo de la columna
+    for (const [campo, destino, max, nombre] of [['documento', 'documento_ref', 300, 'La referencia del documento'], ['expediente', 'expediente', 40, 'El expediente'], ['observacion', 'observacion', 1000, 'La observación']]) {
+      if (vacio(f[campo])) continue;
+      const t = String(f[campo]).trim();
+      v[destino] = t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+      if (t.length > max) recortes.push(`${nombre} se recortó a ${max} caracteres`);
+    }
     if (error) { rechazar(f, error); continue; }
     const actual = datos.adendas.find((a) => a.contrato_id === k.contrato_id && Number(a.numero) === n && activo(a));
     const etiqueta = `${k.numero.slice(0, 3)} · Adenda ${String(n).padStart(2, '0')}`;
@@ -224,13 +229,13 @@ function interpretar(filas, datos) {
       const fin = v.fecha_fin || String(actual.fecha_fin).slice(0, 10); const ini = v.fecha_inicio || String(actual.fecha_inicio).slice(0, 10);
       if (fin < ini) { rechazar(f, `${etiqueta}: el fin es anterior al inicio`); continue; }
       registrar(f, { entidad: 'adenda', accion: 'MODIFICAR', etiqueta, descripcion: consultor ? consultor.nombres : '', registro_id: actual.adenda_id, revision: actual.revision, clave: consultor && consultor.clave,
-        diffs, campos: Object.fromEntries(diffs.map((d) => [d.campo, d.despues])), advertencias: [] });
+        diffs, campos: Object.fromEntries(diffs.map((d) => [d.campo, d.despues])), advertencias: recortes });
     } else {
       if (!v.fecha_inicio || !v.fecha_fin) { rechazar(f, `La adenda ${etiqueta} no existe y para crearla faltan el inicio y el fin`); continue; }
       if (v.fecha_fin < v.fecha_inicio) { rechazar(f, `${etiqueta}: el fin es anterior al inicio`); continue; }
       registrar(f, { entidad: 'adenda', accion: 'CREAR', etiqueta, descripcion: consultor ? consultor.nombres : '', registro_id: null, contrato_id: k.contrato_id, clave: consultor && consultor.clave,
         diffs: Object.entries(v).map(([campo, despues]) => ({ campo, antes: null, despues })), campos: { numero: n, ...v },
-        advertencias: v.estado === 'FIRMADA' && !v.documento_ref ? ['Una adenda FIRMADA requiere la referencia del documento'] : [] });
+        advertencias: [...recortes, ...(v.estado === 'FIRMADA' && !v.documento_ref ? ['Una adenda FIRMADA requiere la referencia del documento'] : [])] });
     }
   }
 

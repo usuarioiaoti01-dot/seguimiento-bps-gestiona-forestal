@@ -357,6 +357,17 @@ test('interpretarAdendas: sin fechas calcula inicio y fin con el plazo, nace EN_
   assert.equal(c.vigente.estado, undefined, 'una adenda nueva no tiene valores vigentes');
 });
 
+test('interpretarAdendas: recorta los textos largos al largo de la columna y la API rechaza los que no caben', async () => {
+  const { datos, servicio } = await entorno();
+  const largo = 'Adenda N.° 04 al Contrato N.° 035-2026-MIDAGRI-SERFOR-PKFW - Contratación del Servicio Especializado en gestión de la información. '.repeat(4);
+  const r = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 4, plazo_dias: 30, documento: largo })] }, datos);
+  const c = r.cambios[0];
+  assert.equal(c.campos.documento_ref.length, 300);
+  assert.ok(c.advertencias.some((a) => /referencia del documento se recortó a 300/.test(a)));
+  const k = datos.contratos.find((x) => x.numero.startsWith('035'));
+  await assert.rejects(servicio.crearEntidad('adenda', { contrato_id: k.contrato_id, fecha_inicio: '2027-01-01', fecha_fin: '2027-01-30', documento_ref: largo }, { usuario: 'x', motivo: 'prueba', origen: 'UI' }), (e) => e.estado === 400 && /hasta 300 caracteres/.test(e.message));
+});
+
 test('interpretarAdendas: advierte huecos, superposiciones, numeración saltada y plazo distinto de las fechas', async () => {
   const { datos } = await entorno();
   const hueco = interpretarAdendas({ adendas: [filaAd({ contrato: '035', numero: 6, inicio: '2027-01-07', fin: '2027-02-05', plazo_dias: 30 })] }, datos).cambios[0];

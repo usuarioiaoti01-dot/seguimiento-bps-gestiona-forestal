@@ -278,6 +278,9 @@ function crearServicio(repo) {
       if (m.estado && !ESTADOS_ADENDA.includes(m.estado)) throw error(400, 'Estado de adenda no válido');
       if (m.fecha_inicio && m.fecha_fin && m.fecha_fin < m.fecha_inicio) throw error(400, 'El fin de la adenda no puede ser anterior a su inicio');
       if (m.estado === 'FIRMADA' && !m.documento_ref) throw error(400, 'Una adenda FIRMADA requiere la referencia del documento');
+      for (const [k, max, nombre] of [['expediente', 40, 'El expediente'], ['documento_ref', 300, 'La referencia del documento'], ['observacion', 1000, 'La observación']]) {
+        if (typeof f[k] === 'string' && f[k].length > max) throw error(400, `${nombre} admite hasta ${max} caracteres (tiene ${f[k].length})`); // los límites de sgf.adenda
+      }
       for (const k of ['plazo_dias', 'plazo_solicitado_dias']) {
         if (m[k] !== null && m[k] !== undefined && !(Number.isInteger(Number(m[k])) && Number(m[k]) > 0)) throw error(400, `${k === 'plazo_dias' ? 'El plazo otorgado' : 'El plazo solicitado'} debe ser un número entero de días mayor que cero`);
       }
