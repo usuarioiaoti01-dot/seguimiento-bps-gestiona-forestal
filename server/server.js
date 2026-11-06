@@ -83,7 +83,7 @@ async function crearApp() {
 
   const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
   const adendasPdf = crearPlanesPdf({ dir: config.adendasPdf, prefijo: 'adenda' });
-  const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, extraerConIA: (a) => agente.extraerDocumento(a) });
+  const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, adendasPdf, extraerConIA: (a) => agente.extraerDocumento(a) });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
   const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
 
@@ -272,7 +272,7 @@ async function crearApp() {
       res.sendFile(adendasPdf.ruta(a.adenda_id), (err) => { if (err && !res.headersSent) next(err); });
     }).catch(next);
   });
-  app.put('/api/adendas/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: adendasPdf.MAX_BYTES }), h(async (req) => {
+  const guardarPdfAdenda = h(async (req) => {
     const { a, consultor_id } = await adendaDe(req.params.id);
     let motivo = '';
     try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
@@ -280,7 +280,9 @@ async function crearApp() {
     const r = adendasPdf.guardar(a.adenda_id, req.body);
     await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'adenda', entidad_id: a.adenda_id, consultor_id, accion: 'MODIFICAR', cambios_json: { adenda_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
     return { ok: true, ...adendasPdf.info(a.adenda_id) };
-  }));
+  });
+  // PUT y POST: algunos IIS (módulo WebDAV) rechazan PUT con 405; la interfaz usa POST.
+  for (const metodo of ['put', 'post']) app[metodo]('/api/adendas/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: adendasPdf.MAX_BYTES }), guardarPdfAdenda);
   app.get('/api/linea-base', seg.requiere('LECTOR'), h(() => servicio.lineaBase()));
   app.get('/api/adendas', seg.requiere('LECTOR'), h(async () => {
     const d = await servicio.datos();

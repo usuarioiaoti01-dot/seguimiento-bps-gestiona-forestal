@@ -47,11 +47,14 @@ export async function vistaAdendas(el) {
         const motivo = await pedirTexto(a.tiene_pdf ? 'Reemplazar el PDF de la adenda' : 'Cargar el PDF de la adenda', `Se adjuntará «${arch.name}» a la ${nombre}. La versión anterior, si existe, se conserva.`, 'Ej.: Adenda suscrita, copia remitida por BPS el 05/11/2026');
         if (!motivo) return;
         try {
-          const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo) }, body: arch, credentials: 'same-origin' });
+          const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo) }, body: arch, credentials: 'same-origin' });
           const dat = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(dat.error || `Error ${r.status}`);
+          // se confirma con el servidor que el archivo quedó guardado antes de mostrarlo
+          const lista = await api('GET', '/adendas');
+          a.tiene_pdf = !!(lista.find((x) => x.adenda_id === a.adenda_id) || {}).tiene_pdf;
+          if (!a.tiene_pdf) { aviso('El servidor respondió, pero el PDF no quedó guardado. Revise la carpeta ADENDAS_PDF_DIR.', 'error'); return; }
           aviso('PDF de la adenda guardado', 'exito');
-          a.tiene_pdf = true;
           cerrarVelo(); verAdendaPdf(a);
         } catch (err) { fallo(err); }
       };
@@ -60,13 +63,15 @@ export async function vistaAdendas(el) {
     if (a.tiene_pdf) {
       modal({
         titulo: nombre, ancho: 1100, botones: [], cerrarTexto: true,
-        contenido: `<iframe src="${url}" title="${esc(nombre)}" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
+        contenido: `<iframe src="${url}#navpanes=0&zoom=100" title="${esc(nombre)}" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
           <div class="acciones" style="justify-content:space-between"><span class="mut2">Si el visor no se muestra, <a href="${url}" target="_blank" rel="noopener">abra el PDF en una pestaña nueva</a>.</span>${editor ? '<button type="button" class="btn peq" id="b-subir-pdf">Reemplazar PDF</button>' : ''}</div>`,
       });
     } else {
       modal({
         titulo: nombre, ancho: 560, botones: [], cerrarTexto: true,
-        contenido: `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--rojo)">SIN ADENDA REGISTRADA EN EL SISTEMA</p>
+        contenido: `${a.documento_ref
+          ? `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--ambar, #b7791f)">ADENDA REGISTRADA · FALTA CARGAR EL PDF</p><p class="mut" style="text-align:center;margin:0 0 8px">${esc(a.documento_ref)}</p>`
+          : '<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--rojo)">SIN ADENDA REGISTRADA EN EL SISTEMA</p>'}
           <p class="mut" style="text-align:center;margin:0 0 12px">${editor ? 'Cargue el archivo PDF de la adenda para registrarlo.' : 'Solicite a un responsable que cargue el PDF de la adenda.'}</p>
           ${editor ? '<div style="text-align:center"><button type="button" class="btn prim" id="b-subir-pdf">Cargar PDF de la adenda</button></div>' : ''}`,
       });

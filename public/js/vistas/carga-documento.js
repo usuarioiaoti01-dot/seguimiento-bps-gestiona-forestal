@@ -94,6 +94,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
   const paso2 = await modal({
     titulo: `Vista previa · ${prev.archivo}`, ancho: 1000,
     contenido: `<div class="mut">${prev.origen === 'IA' ? '<b>Leído con el asistente de IA</b>' : 'Leído'} · ${s.modificar} por actualizar · ${s.crear} por crear · ${s.sin_cambios} sin cambios · ${s.rechazadas} rechazadas${prev.profesional ? ` · profesional: ${esc(prev.profesional.nombres)}` : ''}</div>
+      ${esAdenda && prev.formato === 'pdf' ? '<div class="mut2"><b>Al guardar, este PDF quedará como el documento de la adenda</b> y se mostrará en el visor de Contratos y adendas.</div>' : ''}
       ${prev.ia ? `<div class="mut2">Se omitieron ${prev.ia.omitidos} dato(s) personales antes de enviarlo al asistente.${prev.ia.truncado ? ' El documento es muy largo: solo se leyó la primera parte.' : ''} Revise cada valor: el asistente puede equivocarse.</div>` : ''}
       ${sinNada ? '<div class="vacio">El documento no propone ningún cambio aplicable.</div>' : `<div class="tabla-env" style="max-height:48vh;overflow:auto"><table>
         <thead><tr><th style="width:36px"></th><th>Registro</th><th>Cambio</th></tr></thead><tbody>${prev.cambios.map((c) => filaCambio(c, esAdenda)).join('')}</tbody></table></div>
@@ -120,8 +121,9 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
     await modal({
       titulo: 'Resultado de la carga', ancho: 720,
       contenido: `<div>${badge('CONCLUIDA', `${r.aplicados.length} aplicado(s)`)} ${r.fallidos.length ? badge('ROJO', `${r.fallidos.length} con error`) : ''} ${r.omitidos ? `<span class="mut2">${r.omitidos} sin marcar</span>` : ''}</div>
-        ${r.fallidos.length ? `<ul style="margin:0;padding-left:18px">${r.fallidos.map((f) => `<li><b>${esc(f.etiqueta)}</b>: ${esc(f.motivo)}</li>`).join('')}</ul>` : '<p style="margin:0">Todos los cambios marcados se aplicaron y el pronóstico se recalculó.</p>'}`,
-      botones: [{ texto: 'Cerrar', clase: 'prim', valor: 'ok' }],
+        ${r.fallidos.length ? `<ul style="margin:0;padding-left:18px">${r.fallidos.map((f) => `<li><b>${esc(f.etiqueta)}</b>: ${esc(f.motivo)}</li>`).join('')}</ul>` : '<p style="margin:0">Todos los cambios marcados se aplicaron y el pronóstico se recalculó.</p>'}
+        ${(r.pdf_adjuntado || []).length ? `<p style="margin:10px 0 0"><b>PDF guardado</b> como documento de: ${r.pdf_adjuntado.map((x) => esc(x.etiqueta)).join(', ')}. Se muestra al pulsar la adenda en Contratos y adendas.</p>` : ''}`,
+      botones: [], cerrarTexto: true,
     });
     window.sgfRefrescar();
   } catch (err) { fallo(err); }

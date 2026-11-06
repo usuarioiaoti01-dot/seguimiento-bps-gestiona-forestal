@@ -211,11 +211,11 @@ test('PDF de la adenda: sin archivo responde 404 (tiene_pdf = false); se adjunta
   assert.equal(sin.status, 404);
   assert.match((await sin.json()).error, /SIN ADENDA REGISTRADA EN EL SISTEMA/);
 
-  const subir = (cuerpo, motivo = 'Adenda suscrita remitida por BPS') => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo), Cookie: cookie }, body: cuerpo });
+  const subir = (cuerpo, motivo = 'Adenda suscrita remitida por BPS', metodo = 'PUT') => fetch(url, { method: metodo, headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo), Cookie: cookie }, body: cuerpo });
   const pdf = Buffer.from(['%PDF-1.4', '1 0 obj<<>>endobj', 'trailer<<>>', '%%EOF', ''].join(String.fromCharCode(10)));
   assert.equal((await subir(Buffer.from('no es pdf'))).status, 400);
   assert.equal((await subir(pdf, 'no')).status, 400, 'exige el motivo');
-  assert.equal((await subir(pdf)).status, 200);
+  assert.equal((await subir(pdf, undefined, 'POST')).status, 200, 'POST equivale a PUT (el IIS con WebDAV rechaza PUT)');
 
   assert.equal((await llamar('GET', '/api/adendas')).cuerpo.find((x) => x.adenda_id === a.adenda_id).tiene_pdf, true);
   const ver = await fetch(url, { headers: { 'X-SGF': '1', Cookie: cookie } });

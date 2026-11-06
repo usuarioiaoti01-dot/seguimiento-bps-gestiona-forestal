@@ -496,3 +496,46 @@ test('redactarPersonales: un punto final no deja pasar el DNI ni el teléfono, y
   assert.match(r.texto, /2026-0045678912-X/);
   assert.match(r.texto, /1234\.5678/);
 });
+
+function pdfConTexto(texto) {
+  const t = `BT /F1 14 Tf 40 700 Td (${texto}) Tj ET`;
+  const objs = ['<</Type/Catalog/Pages 2 0 R>>', '<</Type/Pages/Kids[3 0 R]/Count 1>>', '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>', `<</Length ${t.length}>>\nstream\n${t}\nendstream`, '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>'];
+  let c = '%PDF-1.4\n'; const pos = [];
+  objs.forEach((o, i) => { pos.push(c.length); c += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = c.length;
+  c += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${pos.map((p) => `${String(p).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(c, 'latin1');
+}
+
+test('documento de adenda en PDF: al aplicar queda guardado como el PDF de la adenda (visor); el Word no se adjunta', async () => {
+  const { crearPlanesPdf } = require('../server/planes-pdf');
+  let respuesta;
+  const cliente = { messages: { async create() { return { stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'tool_use', id: 't', name: 'registrar_adenda', input: respuesta }] }; } } };
+  const repo = crearRepositorioMemoria({ semilla });
+  const servicio = crearServicio(repo);
+  const agente = crearAgente({ servicio, cliente });
+  const adendasPdf = crearPlanesPdf({ dir: path.join(tmp, 'adendas-pdf-doc'), prefijo: 'adenda' });
+  const docs = crearDocumentos({ servicio, repo, dir: path.join(tmp, 'adp'), adendasPdf, extraerConIA: (a) => agente.extraerDocumento(a) });
+  respuesta = { adendas: [{ contrato: '035-2026-MIDAGRI-SERFOR-PKFW', numero: 4, plazo_dias: 30, documento: 'Adenda N.° 04 al Contrato N.° 035-2026' }] };
+
+  // PDF con texto: se lee, se aplica y queda adjunto a la adenda creada
+  const buffer = pdfConTexto('Adenda N 04 al Contrato N 035-2026. Ampliacion de 30 dias.');
+  const prev = await docs.previsualizar({ buffer, nombre: 'adenda-04.pdf', usuario, tipo: 'adenda' });
+  assert.equal(prev.formato, 'pdf');
+  const r = await docs.aplicar({ carga_id: prev.carga_id, ids: [prev.cambios[0].id], usuario });
+  assert.equal(r.fallidos.length, 0, JSON.stringify(r.fallidos));
+  assert.equal(r.pdf_adjuntado.length, 1);
+  const nueva = (await servicio.datos(true)).adendas.find((a) => a.numero === 4 && a.contrato_id === prev.cambios[0].contrato_id);
+  assert.equal(r.pdf_adjuntado[0].adenda_id, nueva.adenda_id);
+  assert.equal(adendasPdf.info(nueva.adenda_id).existe, true);
+  assert.equal(Buffer.compare(fs.readFileSync(adendasPdf.ruta(nueva.adenda_id)), buffer), 0);
+  const bit = await repo.listarBitacora({ limite: 50 });
+  assert.ok(bit.some((b) => b.entidad === 'adenda' && b.entidad_id === nueva.adenda_id && /adenda_pdf/.test(b.cambios_json || '')));
+
+  // Word: no se puede mostrar en el visor de PDF, por lo que no se adjunta (el original sí se conserva)
+  respuesta = { adendas: [{ contrato: '035-2026-MIDAGRI-SERFOR-PKFW', numero: 5, plazo_dias: 30 }] };
+  const prev2 = await docs.previsualizar({ buffer: await docx('Adenda 05 al contrato 035-2026'), nombre: 'adenda-05.docx', usuario, tipo: 'adenda' });
+  const r2 = await docs.aplicar({ carga_id: prev2.carga_id, ids: [prev2.cambios[0].id], usuario });
+  assert.equal(r2.aplicados.length, 1);
+  assert.equal(r2.pdf_adjuntado.length, 0);
+});

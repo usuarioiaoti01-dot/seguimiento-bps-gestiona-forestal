@@ -231,7 +231,7 @@ function verPlanPdf(d) {
   const url = `/api/planes/${d.plan.plan_id}/pdf`;
   modal({
     titulo: `Plan aprobado · ${d.plan.nombre}`, ancho: 1100, botones: [],
-    contenido: `<iframe src="${url}" title="Plan de trabajo aprobado (PDF)" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
+    contenido: `<iframe src="${url}#navpanes=0&zoom=100" title="Plan de trabajo aprobado (PDF)" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
       <div class="mut2">Si el visor no se muestra, <a href="${url}" target="_blank" rel="noopener">abra el PDF en una pestaña nueva</a>.</div>`,
   });
 }
