@@ -31,6 +31,7 @@ const config = {
   confiarProxy: (() => { const v = (e.TRUST_PROXY || '').trim(); if (!v) return 'loopback'; if (/^\d+$/.test(v)) return Number(v); if (/^(true|false)$/i.test(v)) return v.toLowerCase() === 'true'; return v; })(),
   modoDatos: (e.MODO_DATOS || 'memoria').toLowerCase(), // memoria | sqlserver
   planesPdf: e.PLANES_PDF_DIR || path.join(RAIZ, 'data', 'planes-pdf'), // PDF de los planes aprobados
+  adendasPdf: e.ADENDAS_PDF_DIR || path.join(RAIZ, 'data', 'adendas-pdf'), // PDF de las adendas
   documentos: e.DOCUMENTOS_DIR || path.join(RAIZ, 'data', 'documentos'), // originales de los documentos cargados
   archivoDemo: e.ARCHIVO_DEMO || path.join(RAIZ, 'data', 'demo-estado.json'),
   sqlserver: {

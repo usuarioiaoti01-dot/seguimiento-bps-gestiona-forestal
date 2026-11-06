@@ -9,6 +9,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
 process.env.PLANES_PDF_DIR = path.join(tmp, 'planes-pdf');
+process.env.ADENDAS_PDF_DIR = path.join(tmp, 'adendas-pdf');
 process.env.ADMIN_CORREO = 'admin.prueba@serfor.gob.pe';
 process.env.ADMIN_CLAVE_INICIAL = 'ClavePrueba2026';
 process.env.FECHA_CORTE_PRUEBA = '1';
@@ -199,4 +200,31 @@ test('PDF del plan aprobado: se adjunta con motivo, se muestra en visor y queda 
   const bit = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
   assert.ok(bit.cuerpo.some((b) => b.entidad === 'plan_trabajo' && /plan_pdf/.test(b.cambios_json || '') && b.motivo === 'Plan aprobado el 05/11/2026'));
   assert.ok(!bit.cuerpo.some((b) => /esto no es un pdf/.test(JSON.stringify(b))));
+});
+
+test('PDF de la adenda: sin archivo responde 404 (tiene_pdf = false); se adjunta con motivo, se ve en el visor y queda en la bitácora', async () => {
+  const lista = await llamar('GET', '/api/adendas');
+  const a = lista.cuerpo.find((x) => x.clave === 'ERB' && x.numero === 3);
+  assert.equal(a.tiene_pdf, false);
+  const url = `${base}/api/adendas/${a.adenda_id}/pdf`;
+  const sin = await fetch(url, { headers: { 'X-SGF': '1', Cookie: cookie } });
+  assert.equal(sin.status, 404);
+  assert.match((await sin.json()).error, /SIN ADENDA REGISTRADA EN EL SISTEMA/);
+
+  const subir = (cuerpo, motivo = 'Adenda suscrita remitida por BPS') => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo), Cookie: cookie }, body: cuerpo });
+  const pdf = Buffer.from(['%PDF-1.4', '1 0 obj<<>>endobj', 'trailer<<>>', '%%EOF', ''].join(String.fromCharCode(10)));
+  assert.equal((await subir(Buffer.from('no es pdf'))).status, 400);
+  assert.equal((await subir(pdf, 'no')).status, 400, 'exige el motivo');
+  assert.equal((await subir(pdf)).status, 200);
+
+  assert.equal((await llamar('GET', '/api/adendas')).cuerpo.find((x) => x.adenda_id === a.adenda_id).tiene_pdf, true);
+  const ver = await fetch(url, { headers: { 'X-SGF': '1', Cookie: cookie } });
+  assert.equal(ver.status, 200);
+  assert.equal(ver.headers.get('content-type'), 'application/pdf');
+  assert.equal(Buffer.compare(Buffer.from(await ver.arrayBuffer()), pdf), 0);
+  assert.equal((await fetch(url)).status, 401, 'sin sesión no se entrega');
+  assert.equal((await fetch(`${base}/api/adendas/999999/pdf`, { headers: { 'X-SGF': '1', Cookie: cookie } })).status, 404);
+
+  const bit = await llamar('GET', `/api/bitacora?consultor_id=${a.consultor_id}`);
+  assert.ok(bit.cuerpo.some((b) => b.entidad === 'adenda' && /adenda_pdf/.test(b.cambios_json || '') && b.motivo === 'Adenda suscrita remitida por BPS'));
 });

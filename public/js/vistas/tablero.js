@@ -66,21 +66,49 @@ export async function vistaTablero(el) {
   });
 
   // ---- Alertas: ventana emergente al entrar al tablero y botón para reabrirla
+  const PRIORIDADES = [['ALTA', 'Alta'], ['MEDIA', 'Media'], ['BAJA', 'Baja']];
+  const POR_PAGINA = 6;
+  const textoCerrar = (velo) => { const c = velo.querySelector('.cerrar'); c.textContent = 'Cerrar'; c.classList.add('texto'); c.setAttribute('aria-label', 'Cerrar'); };
+
+  // Segunda ventana: las alertas de un tipo, de a seis por página. Al cerrarla se vuelve al resumen.
+  const abrirAlertasDe = (prio, nombre) => {
+    const items = e.alertas.filter((a) => a.prioridad === prio);
+    const paginas = Math.max(1, Math.ceil(items.length / POR_PAGINA));
+    const cerrada = modal({ titulo: `Alertas · ${nombre} (${items.length})`, ancho: 860, botones: [], contenido: '<div id="alertas"></div><div class="paginador" id="pag"></div>' });
+    let aFicha = false;
+    const velo = document.querySelector('.velo');
+    textoCerrar(velo);
+    let pag = 1;
+    const pintar = () => {
+      const trozo = items.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA);
+      velo.querySelector('#alertas').innerHTML = trozo.map((a) => `<div class="alerta">${badge(a.prioridad)}<div class="t"><a href="#/consultor/${a.consultor_id}">${esc(a.clave)}</a> · ${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`).join('');
+      velo.querySelector('#pag').innerHTML = paginas > 1
+        ? `<span class="mut2">Alertas ${(pag - 1) * POR_PAGINA + 1}–${(pag - 1) * POR_PAGINA + trozo.length} de ${items.length}</span><div class="acciones"><button type="button" class="btn peq" data-p="${pag - 1}" ${pag === 1 ? 'disabled' : ''}>‹ Anterior</button><span class="mut2" style="align-self:center;padding:0 6px">Página ${pag} de ${paginas}</span><button type="button" class="btn peq" data-p="${pag + 1}" ${pag === paginas ? 'disabled' : ''}>Siguiente ›</button></div>`
+        : `<span class="mut2">${items.length} alerta${items.length === 1 ? '' : 's'}</span>`;
+    };
+    pintar();
+    velo.querySelector('#pag').onclick = (ev) => { const b = ev.target.closest('button[data-p]'); if (b && !b.disabled) { pag = Number(b.dataset.p); pintar(); } };
+    velo.querySelector('#alertas').onclick = (ev) => { if (ev.target.closest('a')) { aFicha = true; velo.querySelector('.cerrar').click(); } }; // al ir a una ficha, se cierra la ventana
+    return cerrada.then(() => { if (!aFicha) abrirAlertas(); }); // al cerrar el detalle se vuelve al resumen
+  };
+
+  // Ventana principal: una fila por prioridad con su cantidad.
   const abrirAlertas = () => {
     if (!e.alertas.length || document.querySelector('.velo')) return;
+    const cuenta = (p) => e.alertas.filter((a) => a.prioridad === p).length;
     modal({
-      titulo: `Alertas (${e.alertas.length})`, ancho: 860, botones: [],
-      contenido: '<div style="display:flex;justify-content:flex-end"><select id="f-prio" class="en-linea" aria-label="Filtrar por prioridad"><option value="">Todas</option><option value="ALTA">Alta</option><option value="MEDIA">Media</option></select></div><div id="alertas" style="max-height:60vh;overflow:auto"></div>',
+      titulo: `Alertas (${e.alertas.length})`, ancho: 560, botones: [],
+      contenido: `<div class="resumen-alertas">${PRIORIDADES.map(([p, n]) => `<div class="fila-alerta"><div>${badge(p)}</div><div class="cant"><b>${cuenta(p)}</b> alerta${cuenta(p) === 1 ? '' : 's'} ${n.toLowerCase()}${cuenta(p) === 1 ? '' : 's'}</div><button type="button" class="btn peq prim" data-prio="${p}" ${cuenta(p) ? '' : 'disabled'}>Ver</button></div>`).join('')}</div>`,
     });
     const velo = document.querySelector('.velo');
-    const lista = velo.querySelector('#alertas');
-    const pintarAlertas = (prio) => {
-      const items = e.alertas.filter((a) => !prio || a.prioridad === prio);
-      lista.innerHTML = items.length ? items.map((a) => `<div class="alerta">${badge(a.prioridad)}<div class="t"><a href="#/consultor/${a.consultor_id}">${esc(a.clave)}</a> · ${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`).join('') : '<div class="vacio">Sin alertas</div>';
-    };
-    pintarAlertas('');
-    velo.querySelector('#f-prio').onchange = (ev) => pintarAlertas(ev.target.value);
-    lista.onclick = (ev) => { if (ev.target.closest('a')) velo.querySelector('.cerrar').click(); }; // al ir a una ficha, se cierra la ventana
+    textoCerrar(velo);
+    velo.querySelectorAll('button[data-prio]').forEach((b) => {
+      b.onclick = () => {
+        const p = PRIORIDADES.find(([k]) => k === b.dataset.prio);
+        velo.querySelector('.cerrar').click(); // se cierra el resumen y se abre el detalle del tipo
+        abrirAlertasDe(p[0], p[1]);
+      };
+    });
   };
   // La ventana de alertas se abre una sola vez por ingreso (ni al volver al Tablero ni al recargar la página).
   let vistas = false;

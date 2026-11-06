@@ -2,6 +2,7 @@ node_modules/
 .env
 data/demo-estado.json
 data/planes-pdf/
+data/adendas-pdf/
 data/documentos/
 *.log
 .claude/

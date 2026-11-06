@@ -1,17 +1,16 @@
-import { api, esc, ff, titulo, badge, dia, estado, puede, modal, opciones, aviso, fallo } from '../util.js';
+import { api, esc, ff, titulo, badge, estado, puede, modal, opciones, aviso, fallo, pedirTexto } from '../util.js';
 import { abrirCargaDocumento } from './carga-documento.js';
 import { editarAdenda } from './consultor.js';
 
 export async function vistaAdendas(el) {
   const [adendas, e] = await Promise.all([api('GET', '/adendas'), api('GET', `/estado${estado.corte ? `?corte=${estado.corte}` : ''}`)]);
-  titulo('Contratos y adendas', 'Vigencia por profesional · la vigencia solo se amplía con adendas FIRMADAS');
-  const corte = e.corte;
+  titulo('CONTRATOS Y ADENDAS', 'Vigencia por profesional · la vigencia solo se amplía con adendas FIRMADAS');
   el.innerHTML = `
   <div class="tarjeta"><div class="cab"><h2>Adendas registradas</h2>
     ${puede('EDITOR') ? '<div class="acciones"><button class="btn peq" id="b-agregar">Agregar adenda</button><button class="btn peq prim" id="b-doc-adenda">Subir documento de adenda</button></div>' : ''}
-    <div class="filtros"><input id="f-txt" placeholder="Buscar profesional o documento"><select id="f-est"><option value="">Todos los estados</option><option value="FIRMADA">Firmada</option><option value="EN_TRAMITE">En trámite</option><option value="ANUNCIADA">Anunciada</option><option value="ANULADA">Anulada</option></select></div></div>
-    <div class="cuerpo sin tabla-env"><table><thead><tr><th>Profesional</th><th>Contrato</th><th class="c">Adenda</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Situación al corte</th><th>Documento</th><th>Expediente</th><th>Observación</th></tr></thead><tbody id="cuerpo"></tbody></table></div></div>
-  <p class="mut2">Para editar una adenda, abra la ficha del profesional (clic en la fila). «Subir documento de adenda» lee el documento y propone los datos antes de guardar; «Agregar adenda» las registra a mano. Todos los cambios quedan en el historial y la bitácora.</p>`;
+    <div class="filtros"><select id="f-est"><option value="">Todos los estados</option><option value="FIRMADA">Firmada</option><option value="EN_TRAMITE">En trámite</option><option value="ANUNCIADA">Anunciada</option><option value="ANULADA">Anulada</option></select></div></div>
+    <div class="cuerpo sin tabla-env"><table class="tabla-adendas"><tbody id="cuerpo"></tbody></table></div></div>
+  <p class="mut2">Pulse un profesional para desplegar sus adendas; «Ver ficha» abre su ficha completa. «Subir documento de adenda» lee el documento y propone los datos antes de guardar; «Agregar adenda» las registra a mano. Todos los cambios quedan en el historial y la bitácora.</p>`;
   const bd = el.querySelector('#b-doc-adenda');
   if (bd) bd.onclick = () => abrirCargaDocumento(e.consultores, { tipo: 'adenda' });
   const ba = el.querySelector('#b-agregar');
@@ -31,20 +30,91 @@ export async function vistaAdendas(el) {
       } catch (err) { fallo(err); }
     };
   }
-  const pintar = () => {
-    const t = el.querySelector('#f-txt').value.toLowerCase();
-    const s = el.querySelector('#f-est').value;
-    const filas = adendas.filter((a) => (!s || a.estado === s) && (!t || `${a.nombres} ${a.documento_ref} ${a.contrato}`.toLowerCase().includes(t)));
-    el.querySelector('#cuerpo').innerHTML = filas.map((a) => {
-      const hoy = dia(corte);
-      let sit = '';
-      if (a.estado === 'FIRMADA') sit = hoy < dia(a.fecha_inicio) ? badge('PROGRAMADA', 'Por iniciar') : hoy > dia(a.fecha_fin) ? badge('GRIS', 'Concluida') : badge('VERDE', `Vigente · ${dia(a.fecha_fin) - hoy} d`);
-      else if (a.estado !== 'ANULADA') sit = badge('AMBAR', 'No amplía vigencia aún');
-      return `<tr class="clic" data-id="${a.consultor_id}"><td><b>${esc(a.nombres)}</b> <span class="mut2">${esc(a.clave)}</span></td><td class="num">${esc(a.contrato)}</td><td class="c num">${String(a.numero).padStart(2, '0')}</td><td>${badge(a.estado)}</td><td class="num">${ff(a.fecha_inicio)}</td><td class="num">${ff(a.fecha_fin)}</td><td>${sit}</td><td class="mut2">${esc(a.documento_ref || '—')}</td><td class="num mut2">${esc(a.expediente || '')}</td><td class="mut2 desc">${esc(a.observacion || '')}</td></tr>`;
-    }).join('') || '<tr><td colspan="10" class="vacio">Sin resultados</td></tr>';
-    el.querySelectorAll('tr.clic').forEach((tr) => { tr.onclick = () => { location.hash = `#/consultor/${tr.dataset.id}`; }; });
+  const abiertos = new Set(); // profesionales desplegados
+  const editor = puede('EDITOR');
+
+  // Visor del PDF de la adenda; si el sistema no lo tiene, avisa y permite cargarlo.
+  function verAdendaPdf(a) {
+    const url = `/api/adendas/${a.adenda_id}/pdf`;
+    const nombre = `Adenda N.° ${String(a.numero).padStart(2, '0')} · ${a.nombres.toUpperCase()}`;
+    const cerrarVelo = () => document.querySelector('.velo .cerrar').click();
+    const subir = (velo) => {
+      const f = document.createElement('input'); f.type = 'file'; f.accept = 'application/pdf,.pdf';
+      f.onchange = async () => {
+        const arch = f.files[0]; if (!arch) return;
+        if (arch.type !== 'application/pdf' && !/\.pdf$/i.test(arch.name)) { aviso('Seleccione un archivo PDF', 'error'); return; }
+        if (arch.size > 15 * 1024 * 1024) { aviso('El PDF supera el máximo de 15 MB', 'error'); return; }
+        const motivo = await pedirTexto(a.tiene_pdf ? 'Reemplazar el PDF de la adenda' : 'Cargar el PDF de la adenda', `Se adjuntará «${arch.name}» a la ${nombre}. La versión anterior, si existe, se conserva.`, 'Ej.: Adenda suscrita, copia remitida por BPS el 05/11/2026');
+        if (!motivo) return;
+        try {
+          const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Motivo': encodeURIComponent(motivo) }, body: arch, credentials: 'same-origin' });
+          const dat = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(dat.error || `Error ${r.status}`);
+          aviso('PDF de la adenda guardado', 'exito');
+          a.tiene_pdf = true;
+          cerrarVelo(); verAdendaPdf(a);
+        } catch (err) { fallo(err); }
+      };
+      f.click();
+    };
+    if (a.tiene_pdf) {
+      modal({
+        titulo: nombre, ancho: 1100, botones: [], cerrarTexto: true,
+        contenido: `<iframe src="${url}" title="${esc(nombre)}" style="width:100%;height:72vh;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-2)"></iframe>
+          <div class="acciones" style="justify-content:space-between"><span class="mut2">Si el visor no se muestra, <a href="${url}" target="_blank" rel="noopener">abra el PDF en una pestaña nueva</a>.</span>${editor ? '<button type="button" class="btn peq" id="b-subir-pdf">Reemplazar PDF</button>' : ''}</div>`,
+      });
+    } else {
+      modal({
+        titulo: nombre, ancho: 560, botones: [], cerrarTexto: true,
+        contenido: `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--rojo)">SIN ADENDA REGISTRADA EN EL SISTEMA</p>
+          <p class="mut" style="text-align:center;margin:0 0 12px">${editor ? 'Cargue el archivo PDF de la adenda para registrarlo.' : 'Solicite a un responsable que cargue el PDF de la adenda.'}</p>
+          ${editor ? '<div style="text-align:center"><button type="button" class="btn prim" id="b-subir-pdf">Cargar PDF de la adenda</button></div>' : ''}`,
+      });
+    }
+    const velo = document.querySelector('.velo');
+    const b = velo.querySelector('#b-subir-pdf');
+    if (b) b.onclick = () => subir(velo);
+  }
+  // Texto largo: tres líneas y, si no cabe, «Ver todo» en una ventana emergente.
+  const largo = (t, titulo) => {
+    const x = String(t || '').trim();
+    if (!x) return '<span class="mut2">—</span>';
+    return `<div class="clamp3">${esc(x)}</div>${x.length > 110 ? `<a href="#" class="ver-todo" data-t="${esc(titulo)}" data-x="${esc(x)}">Ver todo</a>` : ''}`;
   };
-  el.querySelector('#f-txt').oninput = pintar;
+  const pintar = () => {
+    const s = el.querySelector('#f-est').value;
+    const grupos = new Map();
+    for (const a of adendas.filter((x) => !s || x.estado === s)) {
+      if (!grupos.has(a.consultor_id)) grupos.set(a.consultor_id, []);
+      grupos.get(a.consultor_id).push(a);
+    }
+    el.querySelector('#cuerpo').innerHTML = [...grupos.values()].map((lista) => {
+      const p = lista[0];
+      const abierto = abiertos.has(p.consultor_id);
+      const cab = `<tr class="grupo clic" data-id="${p.consultor_id}" aria-expanded="${abierto}"><td colspan="9"><span class="flecha">${abierto ? '▾' : '▸'}</span> <b>${esc(p.nombres.toUpperCase())}</b> <a href="#/contrato/${p.consultor_id}" class="ver-ficha">Ver ficha</a></td></tr>`;
+      if (!abierto) return cab;
+      const enc = '<tr class="enc"><th>Profesional</th><th>Contrato</th><th class="c">Adenda</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Documento</th><th>Expediente</th><th>Observación</th></tr>';
+      return cab + enc + lista.map((a) => `<tr class="hija clic" data-adenda="${a.adenda_id}" title="Clic para ver el PDF de la adenda"><td></td><td class="num mut2">${esc(a.contrato)}</td><td class="c num">${String(a.numero).padStart(2, '0')}</td><td>${badge(a.estado)}</td><td class="num">${ff(a.fecha_inicio)}</td><td class="num">${ff(a.fecha_fin)}</td><td class="mut2">${largo(a.documento_ref, `Documento · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}</td><td class="num mut2">${esc(a.expediente || '')}</td><td class="mut2 desc">${largo(a.observacion, `Observación · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}</td></tr>`).join('');
+    }).join('') || '<tr><td colspan="9" class="vacio">Sin resultados</td></tr>';
+  };
+  el.querySelector('#cuerpo').onclick = async (ev) => {
+    if (ev.target.closest('.ver-ficha')) return; // el enlace navega solo
+    const v = ev.target.closest('.ver-todo');
+    if (v) {
+      ev.preventDefault();
+      const r = modal({ titulo: v.dataset.t, ancho: 620, botones: [], contenido: `<p style="white-space:pre-wrap;margin:0">${esc(v.dataset.x)}</p>` });
+      const c = document.querySelector('.velo .cerrar'); c.textContent = 'Cerrar'; c.classList.add('texto');
+      await r;
+      return;
+    }
+    const h = ev.target.closest('tr.hija');
+    if (h) { verAdendaPdf(adendas.find((x) => x.adenda_id === Number(h.dataset.adenda))); return; }
+    const g = ev.target.closest('tr.grupo');
+    if (!g) return;
+    const id = Number(g.dataset.id);
+    if (abiertos.has(id)) abiertos.delete(id); else abiertos.add(id);
+    pintar();
+  };
   el.querySelector('#f-est').onchange = pintar;
   pintar();
 }

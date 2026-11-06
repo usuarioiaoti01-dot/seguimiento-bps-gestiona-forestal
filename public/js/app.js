@@ -15,6 +15,7 @@ const RUTAS = [
   { patron: /^#?\/?$/, vista: vistaTablero, menu: 'tablero' },
   { patron: /^#\/seguimiento(?:\/(atrasadas|exceden))?$/, vista: vistaSeguimiento, menu: 'seguimiento' },
   { patron: /^#\/consultor\/(\d+)$/, vista: vistaConsultor, menu: 'seguimiento' },
+  { patron: /^#\/contrato\/(\d+)$/, vista: (el, [id]) => vistaConsultor(el, [id], 'contrato'), menu: 'adendas' }, // ficha desde Contratos y adendas: sin plan de trabajo
   { patron: /^#\/adendas$/, vista: vistaAdendas, menu: 'adendas' },
   { patron: /^#\/linea-base$/, vista: vistaLineaBase, menu: 'lb' },
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },

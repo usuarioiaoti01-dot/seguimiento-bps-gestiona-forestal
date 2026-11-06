@@ -20,7 +20,9 @@ export function paginarActividades(acts) {
   return paginas;
 }
 
-export async function vistaConsultor(el, [id]) {
+/** modo 'contrato': ficha abierta desde Contratos y adendas; no muestra el plan de trabajo (solo en Seguimiento Actividades). */
+export async function vistaConsultor(el, [id], modo = '') {
+  const conPlan = modo !== 'contrato';
   const q = estado.corte ? `?corte=${estado.corte}` : '';
   const [d, bit] = await Promise.all([api('GET', `/consultores/${id}${q}`), api('GET', `/bitacora?consultor_id=${id}&limite=25`)]);
   const c = d.consultor; const v = d.vigencia; const p = d.pronostico; const k = d.contrato || {};
@@ -41,7 +43,7 @@ export async function vistaConsultor(el, [id]) {
       <div class="mut2">${esc(k.titulo_tdr || '')}${c.recurso_cronograma ? ` · Recurso en cronograma: ${esc(c.recurso_cronograma)}` : ''}</div></div></div>
     <div class="acciones">${badge(v.semaforo)}
       ${estado.ia ? '<button class="btn" id="b-ia">Preguntar al asistente</button>' : ''}
-      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : '<a class="btn" href="#/seguimiento">← Seguimiento Actividades</a>'}</div>
+      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : `<a class="btn" href="${conPlan ? '#/seguimiento' : '#/adendas'}">${conPlan ? '← Seguimiento Actividades' : '← Contratos y adendas'}</a>`}</div>
   </div></div>
 
   <div class="rejilla-2">
@@ -63,7 +65,7 @@ export async function vistaConsultor(el, [id]) {
       ${altasVisibles.map(htmlAlerta).join('') || `<div class="vacio">${d.alertas.length ? 'Sin alertas altas' : 'Sin alertas'}</div>`}</div></div>
   </div>
 
-  <div class="tarjeta">
+  ${conPlan ? `<div class="tarjeta">
     <div class="cab"><div><h2>${esc(d.plan ? d.plan.nombre : 'Sin plan de trabajo')}</h2>
       ${d.plan ? `<span class="mut2">${badge(d.plan.estado)} · ${esc(d.plan.fuente || '')} ${d.plan.fecha_recepcion ? ` · recibido ${ff(d.plan.fecha_recepcion)}` : ''} · días ${d.plan.tipo_dias === 'HABILES' ? 'hábiles' : 'calendario'}</span>` : ''}</div>
       <div class="acciones">${d.plan && d.plan_pdf?.existe ? '<button class="btn peq prim" id="b-pdf">Ver plan aprobado (PDF)</button>' : ''}${d.plan && editor ? `<button class="btn peq" id="b-pdf-adjuntar">${d.plan_pdf?.existe ? 'Reemplazar PDF' : 'Adjuntar plan (PDF)'}</button><input type="file" id="f-pdf" accept="application/pdf" hidden>` : ''}${d.plan ? '<button class="btn peq" id="b-lb">Línea base 2026</button>' : ''}${d.plan && editor ? `
@@ -84,7 +86,7 @@ export async function vistaConsultor(el, [id]) {
       <span><i style="border-left:2px dashed var(--azul);width:2px;height:12px"></i>Corte</span><span><i style="border-left:2px dashed var(--rojo);width:2px;height:12px"></i>Fin de vigencia</span>
       <span class="critica">◆</span> ruta crítica</div></div>
     <div class="cuerpo sin tabla-env" id="tabla-act"></div>
-  </div>
+  </div>` : ''}
 
   <div class="rejilla-2">
     <div class="tarjeta"><div class="cab"><h2>Actas de control de cambios</h2>${editor ? '<button class="btn peq" id="b-cc">Registrar acta</button>' : ''}</div><div class="cuerpo sin">
@@ -96,7 +98,7 @@ export async function vistaConsultor(el, [id]) {
     <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Registro</th><th>Cambios</th><th>Motivo</th></tr></thead>
     <tbody>${bit.map((b) => `<tr><td class="num">${fh(b.fecha)}</td><td>${esc(b.usuario)}${b.origen === 'IA' ? ' ' + badge('NUEVA', 'IA') : ''}</td><td>${esc(b.accion)}</td><td>${esc(b.entidad)} ${b.entidad_id ?? ''}</td><td class="diff">${diffHtml(b.cambios_json)}</td><td class="mut2">${esc(b.motivo || '')}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin cambios registrados</td></tr>'}</tbody></table></div></div>`;
 
-  pintarActividades(el.querySelector('#tabla-act'), d, editor);
+  if (conPlan) pintarActividades(el.querySelector('#tabla-act'), d, editor);
   conectar(el, d, editor);
 }
 

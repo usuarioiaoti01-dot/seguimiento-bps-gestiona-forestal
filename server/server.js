@@ -82,6 +82,7 @@ async function crearApp() {
   });
 
   const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
+  const adendasPdf = crearPlanesPdf({ dir: config.adendasPdf, prefijo: 'adenda' });
   const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, extraerConIA: (a) => agente.extraerDocumento(a) });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
   const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
@@ -254,13 +255,39 @@ async function crearApp() {
     await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: plan.plan_id, consultor_id: plan.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
     return { ok: true, ...planesPdf.info(plan.plan_id) };
   }));
+  // PDF de cada adenda: lo muestra el visor de Contratos y adendas y lo adjunta un EDITOR (mismo mecanismo que el plan).
+  const adendaDe = async (id) => {
+    const d = await servicio.datos();
+    const a = d.adendas.find((x) => x.adenda_id === Number(id) && x.activo !== 0 && x.activo !== false);
+    if (!a) throw Object.assign(new Error('Adenda no encontrada'), { estado: 404 });
+    return { a, consultor_id: (d.contratos.find((k) => k.contrato_id === a.contrato_id) || {}).consultor_id };
+  };
+  app.get('/api/adendas/:id/pdf', seg.requiere('LECTOR'), (req, res, next) => {
+    adendaDe(req.params.id).then(({ a }) => {
+      if (!adendasPdf.info(a.adenda_id).existe) throw Object.assign(new Error('SIN ADENDA REGISTRADA EN EL SISTEMA'), { estado: 404 });
+      res.set({
+        'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="adenda-${a.adenda_id}.pdf"`, 'Cache-Control': 'private, no-store',
+        'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'",
+      });
+      res.sendFile(adendasPdf.ruta(a.adenda_id), (err) => { if (err && !res.headersSent) next(err); });
+    }).catch(next);
+  });
+  app.put('/api/adendas/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: adendasPdf.MAX_BYTES }), h(async (req) => {
+    const { a, consultor_id } = await adendaDe(req.params.id);
+    let motivo = '';
+    try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
+    if (motivo.length < 5) throw Object.assign(new Error('Indique el motivo (mínimo 5 caracteres)'), { estado: 400, requiereMotivo: true });
+    const r = adendasPdf.guardar(a.adenda_id, req.body);
+    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'adenda', entidad_id: a.adenda_id, consultor_id, accion: 'MODIFICAR', cambios_json: { adenda_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
+    return { ok: true, ...adendasPdf.info(a.adenda_id) };
+  }));
   app.get('/api/linea-base', seg.requiere('LECTOR'), h(() => servicio.lineaBase()));
   app.get('/api/adendas', seg.requiere('LECTOR'), h(async () => {
     const d = await servicio.datos();
     return d.adendas.map((a) => {
       const k = d.contratos.find((x) => x.contrato_id === a.contrato_id) || {};
       const c = d.consultores.find((x) => x.consultor_id === k.consultor_id) || {};
-      return { ...a, contrato: k.numero, consultor_id: c.consultor_id, clave: c.clave, nombres: c.nombres };
+      return { ...a, contrato: k.numero, consultor_id: c.consultor_id, clave: c.clave, nombres: c.nombres, tiene_pdf: adendasPdf.info(a.adenda_id).existe };
     }).sort((x, y) => (x.clave || '').localeCompare(y.clave || '') || x.numero - y.numero);
   }));
   app.get('/api/bitacora', seg.requiere('LECTOR'), h(async (req) => {

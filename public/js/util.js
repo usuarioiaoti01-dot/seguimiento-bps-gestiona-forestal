@@ -93,12 +93,12 @@ export function aviso(texto, tipo = '') {
 export const fallo = (err) => { if (!err.cancelado) aviso(err.message, 'error'); };
 
 /** Modal genérico. contenido: HTML; botones: [{texto, clase, valor}] ; devuelve promesa con {valor, form}. */
-export function modal({ titulo, contenido, botones = [{ texto: 'Cerrar', valor: null }], ancho }) {
+export function modal({ titulo, contenido, botones = [{ texto: 'Cerrar', valor: null }], ancho, cerrarTexto = false }) {
   return new Promise((resolver) => {
     const velo = document.createElement('div');
     velo.className = 'velo';
     velo.innerHTML = `<div class="modal" role="dialog" aria-modal="true" ${ancho ? `style="width:min(${ancho}px,100%)"` : ''}>
-      <div class="cab"><h2>${esc(titulo)}</h2><button class="cerrar" aria-label="Cerrar">×</button></div>
+      <div class="cab"><h2>${esc(titulo)}</h2><button class="cerrar${cerrarTexto ? ' texto' : ''}" aria-label="Cerrar">${cerrarTexto ? 'Cerrar' : '×'}</button></div>
       <form class="cuerpo" novalidate>${contenido}</form>
       ${botones.length ? `<div class="pie">${botones.map((b, i) => `<button type="button" class="btn ${b.clase || ''}" data-i="${i}">${esc(b.texto)}</button>`).join('')}</div>` : ''}</div>`;
     const cerrar = (valor) => { velo.remove(); document.removeEventListener('keydown', tecla); resolver({ valor, form: velo.querySelector('form'), datos: datosForm(velo.querySelector('form')) }); };
