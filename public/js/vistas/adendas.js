@@ -73,12 +73,15 @@ export async function vistaAdendas(el) {
           ? `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--ambar, #b7791f)">ADENDA REGISTRADA · FALTA CARGAR EL PDF</p><p class="mut" style="text-align:center;margin:0 0 8px">${esc(a.documento_ref)}</p>`
           : '<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--rojo)">SIN ADENDA REGISTRADA EN EL SISTEMA</p>'}
           <p class="mut" style="text-align:center;margin:0 0 12px">${editor ? 'Cargue el archivo PDF de la adenda para registrarlo.' : 'Solicite a un responsable que cargue el PDF de la adenda.'}</p>
-          ${editor ? '<div style="text-align:center"><button type="button" class="btn prim" id="b-subir-pdf">Cargar PDF de la adenda</button></div>' : ''}`,
+          ${editor ? '<div style="text-align:center"><button type="button" class="btn prim" id="b-ir-documento">Cargar PDF de la adenda</button></div><p class="mut2" style="text-align:center;margin:12px 0 0">¿Es un escaneo, sin texto? <a href="#" id="b-subir-pdf">Guardar el PDF sin leerlo</a></p>' : ''}`,
       });
     }
     const velo = document.querySelector('.velo');
     const b = velo.querySelector('#b-subir-pdf');
-    if (b) b.onclick = () => subir(velo);
+    if (b) b.onclick = (ev) => { ev.preventDefault(); subir(velo); };
+    // «Cargar PDF de la adenda» lleva a «Subir documento de adenda», con el profesional ya elegido
+    const ir = velo.querySelector('#b-ir-documento');
+    if (ir) ir.onclick = () => { cerrarVelo(); abrirCargaDocumento(e.consultores, { tipo: 'adenda', consultor_id: a.consultor_id }); };
   }
   // Texto largo: tres líneas y, si no cabe, «Ver todo» en una ventana emergente.
   const largo = (t, titulo) => {

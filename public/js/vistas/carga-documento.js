@@ -66,7 +66,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
       <div class="form">
         <div class="campo ancho"><label>Documento (máx. 15 MB)</label><input type="file" name="archivo" accept=".pdf,.docx,.xlsx,.csv"></div>
         <div class="campo ancho"><label>Profesional (opcional: si el documento no indica el contrato)</label>
-          <select name="consultor_id"><option value="">— Según el contrato del documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]))}</select></div>
+          <select name="consultor_id"><option value="">— Según el contrato del documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]), opts.consultor_id)}</select></div>
       </div>
       <div class="mut2" style="line-height:1.5">Una adenda nueva se guarda <b>en trámite</b>, salvo que usted elija «Firmada» en la vista previa (entonces el documento es obligatorio). Si el documento trae el plazo pero no las fechas, el inicio se calcula desde el fin de la última adenda firmada. Antes de enviarlo al asistente se quitan DNI, teléfonos y correos, y el original se conserva.
         <a href="/api/documentos/plantilla.xlsx">Descargar plantilla (Excel)</a></div>`

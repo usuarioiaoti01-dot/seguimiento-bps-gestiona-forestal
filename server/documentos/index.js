@@ -29,7 +29,7 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
     const deAdenda = tipo === 'adenda';
     // Una adenda firmada suele ser un PDF escaneado, sin texto que leer: se guía al usuario al visor, donde sí se puede guardar.
     const leido = await leer(buffer, nombre).catch((e) => {
-      if (deAdenda && /parece un documento escaneado/.test(e.message)) throw error(400, 'El PDF no tiene texto (es un escaneo), así que no se pueden leer sus datos. Para guardarlo como el PDF de la adenda, pulse la adenda en Contratos y adendas y use «Cargar PDF de la adenda»');
+      if (deAdenda && /parece un documento escaneado/.test(e.message)) throw error(400, 'El PDF no tiene texto (es un escaneo), así que no se pueden leer sus datos. Para guardarlo como el PDF de la adenda, pulse la adenda en Contratos y adendas y use «Guardar el PDF sin leerlo»');
       throw e;
     });
     const datos = await servicio.datos(true);
@@ -47,7 +47,7 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
         throw error(400, 'No se encontraron filas para actualizar. Use la plantilla, o un cronograma con las columnas N.°, Nombre de tarea, Inicio, Fin y % completado');
       }
     } else {
-      if (!extraerConIA) throw error(503, 'La lectura de PDF y Word requiere el asistente de IA, que no está configurado. Para guardar el PDF de una adenda sin leerlo, pulse la adenda en Contratos y adendas y use «Cargar PDF de la adenda»');
+      if (!extraerConIA) throw error(503, 'La lectura de PDF y Word requiere el asistente de IA, que no está configurado. Para guardar el PDF de una adenda sin leerlo, pulse la adenda en Contratos y adendas y use «Guardar el PDF sin leerlo»');
       const r = await extraerConIA({ texto: leido.texto, usuario, clave, ...(deAdenda ? { modo: 'adenda' } : {}) });
       filas = r.filas; origen = 'IA'; ia = { omitidos: r.omitidos, truncado: r.truncado };
       if (deAdenda && !filas.adendas.length) throw error(400, 'No se encontró ninguna adenda en el documento. Compruebe que sea el documento de una adenda, con su contrato y su número');
