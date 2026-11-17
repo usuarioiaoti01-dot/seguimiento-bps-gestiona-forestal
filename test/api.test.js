@@ -202,6 +202,45 @@ test('PDF del plan aprobado: se adjunta con motivo, se muestra en visor y queda 
   assert.ok(!bit.cuerpo.some((b) => /esto no es un pdf/.test(JSON.stringify(b))));
 });
 
+test('Revisión del plan: exige el PDF; observar pide observación y plazo y genera la alerta; aprobar deja la fecha', async () => {
+  const est = await llamar('GET', '/api/estado');
+  const eve = est.cuerpo.consultores.find((c) => c.clave === 'EVE');
+  const erb = est.cuerpo.consultores.find((c) => c.clave === 'ERB');
+  assert.equal(erb.plan.tiene_pdf, true);
+  assert.equal(eve.plan.tiene_pdf, false);
+  const revisar = (c, cuerpo) => llamar('POST', `/api/planes/${c.plan.plan_id}/revision`, cuerpo);
+  assert.equal((await revisar(eve, { decision: 'APROBAR' })).estado, 400, 'sin PDF no se puede aprobar');
+
+  assert.equal((await revisar(erb, { decision: 'OBSERVAR', plazo: '2099-12-31' })).estado, 400, 'la observación es obligatoria');
+  assert.equal((await revisar(erb, { decision: 'OBSERVAR', observacion: 'Falta detallar los entregables' })).estado, 400, 'el plazo es obligatorio');
+  assert.equal((await revisar(erb, { decision: 'OBSERVAR', observacion: 'Falta detallar los entregables', plazo: '2020-01-01' })).estado, 400, 'el plazo no puede ser pasado');
+  assert.equal((await revisar(erb, { decision: 'TAL' })).estado, 400);
+
+  assert.equal((await revisar(erb, { decision: 'OBSERVAR', observacion: 'Falta detallar los entregables', plazo: '2099-12-31' })).estado, 200);
+  let e2 = await llamar('GET', '/api/estado');
+  let c2 = e2.cuerpo.consultores.find((c) => c.clave === 'ERB');
+  assert.equal(c2.plan.estado, 'OBSERVADO');
+  assert.equal(c2.plan.fecha_subsanacion, '2099-12-31');
+  assert.equal(c2.plan.observacion_revision, 'Falta detallar los entregables');
+  const alerta = e2.cuerpo.alertas.find((a) => a.codigo === 'PLAN_OBSERVADO' && a.consultor_id === erb.consultor_id);
+  assert.ok(alerta, 'el plazo para subsanar aparece entre las alertas del profesional');
+  assert.equal(alerta.prioridad, 'MEDIA');
+  const det = await llamar('GET', `/api/consultores/${erb.consultor_id}`);
+  assert.ok(det.cuerpo.alertas.some((a) => a.codigo === 'PLAN_OBSERVADO'));
+
+  const antes = e2.cuerpo.indicadores.planes_aprobados;
+  assert.equal((await revisar(erb, { decision: 'APROBAR' })).estado, 200);
+  e2 = await llamar('GET', '/api/estado');
+  c2 = e2.cuerpo.consultores.find((c) => c.clave === 'ERB');
+  assert.equal(c2.plan.estado, 'APROBADO');
+  assert.match(c2.plan.fecha_aprobacion, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(c2.plan.fecha_subsanacion, null);
+  assert.equal(e2.cuerpo.indicadores.planes_aprobados, antes + 1);
+  assert.ok(!e2.cuerpo.alertas.some((a) => a.codigo === 'PLAN_OBSERVADO' && a.consultor_id === erb.consultor_id));
+  const bit = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
+  assert.ok(bit.cuerpo.some((b) => b.entidad === 'plan_trabajo' && b.motivo === 'Aprobación del plan de trabajo'));
+});
+
 test('PDF de la adenda: sin archivo responde 404 (tiene_pdf = false); se adjunta con motivo, se ve en el visor y queda en la bitácora', async () => {
   const lista = await llamar('GET', '/api/adendas');
   const a = lista.cuerpo.find((x) => x.clave === 'ERB' && x.numero === 3);

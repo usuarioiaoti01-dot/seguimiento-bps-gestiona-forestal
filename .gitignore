@@ -3,6 +3,7 @@ node_modules/
 data/demo-estado.json
 data/planes-pdf/
 data/adendas-pdf/
+data/actividades-pdf/
 data/documentos/
 *.log
 .claude/

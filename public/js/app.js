@@ -4,9 +4,11 @@ import { vistaTablero } from './vistas/tablero.js';
 import { vistaConsultor } from './vistas/consultor.js';
 import { vistaSeguimiento } from './vistas/seguimiento.js';
 import { vistaAdendas } from './vistas/adendas.js';
+import { vistaFormular } from './vistas/formulacion.js';
 import { vistaLineaBase } from './vistas/lineabase.js';
 import { vistaBitacora } from './vistas/bitacora.js';
 import { vistaConfiguracion } from './vistas/configuracion.js';
+import { vistaActualizarArchivo } from './vistas/actualizar-archivo.js';
 import { montarAsistente } from './vistas/asistente.js';
 
 const raiz = document.getElementById('app');
@@ -17,7 +19,9 @@ const RUTAS = [
   { patron: /^#\/consultor\/(\d+)$/, vista: vistaConsultor, menu: 'seguimiento' },
   { patron: /^#\/contrato\/(\d+)$/, vista: (el, [id]) => vistaConsultor(el, [id], 'contrato'), menu: 'adendas' }, // ficha desde Contratos y adendas: sin plan de trabajo
   { patron: /^#\/adendas$/, vista: vistaAdendas, menu: 'adendas' },
+  { patron: /^#\/formular(?:\/(\d+))?$/, vista: vistaFormular, menu: 'formular' },
   { patron: /^#\/linea-base$/, vista: vistaLineaBase, menu: 'lb' },
+  { patron: /^#\/actualizar-archivo$/, vista: vistaActualizarArchivo, menu: 'actualizar' },
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },
   { patron: /^#\/configuracion$/, vista: vistaConfiguracion, menu: 'config' },
 ];
@@ -67,11 +71,14 @@ function estructura() {
     <aside class="lateral">
       <div class="logo">${ICONOS.logo}<div><b>TABLERO SEGUIMIENTO ACTIVIDADES GESTIONA FORESTAL - 2026</b><small>Gestiona Forestal · PI2 Bosques</small></div></div>
       <nav class="menu">${esProfesional() ? `
-        <a href="#/consultor/${u.consultor_id}" data-menu="seguimiento">${ICONOS.tablero}Mi información</a>` : `
-        <a href="#/" data-menu="tablero">${ICONOS.tablero}Gestión Adendas</a>
-        <a href="#/seguimiento" data-menu="seguimiento">${ICONOS.seguimiento}Seguimiento Actividades</a>
+        <a href="#/consultor/${u.consultor_id}" data-menu="seguimiento">${ICONOS.tablero}Mi información</a>
+        <a href="#/formular" data-menu="formular">${ICONOS.adendas}Formular Plan de Trabajo</a>` : `
+        <a href="#/" data-menu="tablero">${ICONOS.tablero}Adendas - Plazos</a>
         <a href="#/adendas" data-menu="adendas">${ICONOS.adendas}Contratos y adendas</a>
+        <a href="#/formular" data-menu="formular">${ICONOS.adendas}Formular Plan de Trabajo</a>
+        <a href="#/seguimiento" data-menu="seguimiento">${ICONOS.seguimiento}Seguimiento Actividades</a>
         <a href="#/linea-base" data-menu="lb">${ICONOS.lb}Línea base 2026</a>
+        <a href="#/actualizar-archivo" data-menu="actualizar">${ICONOS.seguimiento}Actualizar Desde Archivo</a>
         <a href="#/bitacora" data-menu="bitacora">${ICONOS.bitacora}Bitácora</a>
         <a href="#/configuracion" data-menu="config">${ICONOS.config}Configuración</a>`}
       </nav>
@@ -102,7 +109,7 @@ async function enrutar() {
   let hash = location.hash || '#/';
   if (esProfesional()) { // el Profesional solo ve su propia ficha (el servidor también lo exige)
     const propia = `#/consultor/${estado.usuario.consultor_id}`;
-    if (hash !== propia) { location.hash = propia; return; }
+    if (hash !== propia && hash !== '#/formular') { location.hash = propia; return; }
   }
   const ruta = RUTAS.find((r) => r.patron.test(hash)) || RUTAS[0];
   const m = hash.match(ruta.patron);
@@ -124,7 +131,7 @@ async function iniciar() {
   } catch { pantallaIngreso(); return; }
   if (estado.usuario.cambiarClave) { raiz.innerHTML = '<div class="ingreso"></div>'; await pantallaCambioClave(true); return; }
   estructura();
-  if (esProfesional() && location.hash !== `#/consultor/${estado.usuario.consultor_id}`) { location.hash = `#/consultor/${estado.usuario.consultor_id}`; return; }
+  if (esProfesional() && location.hash !== `#/consultor/${estado.usuario.consultor_id}` && location.hash !== '#/formular') { location.hash = `#/consultor/${estado.usuario.consultor_id}`; return; }
   enrutar();
 }
 

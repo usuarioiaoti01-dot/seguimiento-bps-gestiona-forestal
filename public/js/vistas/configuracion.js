@@ -1,11 +1,11 @@
-import { api, esc, ff, fh, titulo, puede, aviso, fallo, modal, opciones, estado, NOMBRE_PERFIL } from '../util.js';
+import { api, esc, ff, fh, titulo, badge, puede, aviso, fallo, modal, opciones, estado, NOMBRE_PERFIL } from '../util.js';
 
 export async function vistaConfiguracion(el) {
   titulo('Configuración', 'Parámetros del pronóstico, calendario de feriados, usuarios y consumo del asistente');
   const admin = puede('ADMIN'); // Administrador: usuarios y perfiles
   const jefe = puede('EDITOR'); // Jefe de Proyecto y Administrador: parámetros, feriados y consumo de IA
   const { parametros, feriados, corte_vigente: corte } = await api('GET', '/parametros');
-  const [usuarios, uso, e] = await Promise.all([admin ? api('GET', '/usuarios') : [], jefe ? api('GET', '/ia/uso') : [], admin ? api('GET', '/estado') : { consultores: [] }]);
+  const [usuarios, uso, e, revisiones] = await Promise.all([admin ? api('GET', '/usuarios') : [], jefe ? api('GET', '/ia/uso') : [], admin ? api('GET', '/estado') : { consultores: [] }, jefe ? api('GET', '/formulacion/historial') : []]);
   const consultores = e.consultores;
   const claveDe = Object.fromEntries(consultores.map((c) => [c.consultor_id, c.clave]));
   el.innerHTML = `
@@ -18,7 +18,10 @@ export async function vistaConfiguracion(el) {
       ${feriados.map((f) => `<tr><td class="num">${ff(f.fecha)}</td><td>${esc(f.descripcion)}</td><td class="mut2">${esc(f.tipo)}</td><td>${jefe ? `<button class="btn peq peligro" data-f="${esc(f.fecha)}">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
       <div class="cuerpo mut2">Solo se usan en planes configurados en días hábiles. Verifique cada año los feriados y los días no laborables que declare el Poder Ejecutivo para el sector público.</div></div>
   </div>
-  ${jefe ? `<div class="rejilla-2">
+  ${jefe ? `<div class="tarjeta"><div class="cab"><h2>Historial de revisión de planes de trabajo</h2><span class="mut2">Etapas, responsables y comentarios</span></div>
+    <div class="cuerpo sin tabla-env" style="max-height:340px;overflow:auto"><table><thead><tr><th>Fecha</th><th>Profesional</th><th>Usuario</th><th>Etapa</th><th>Comentario</th></tr></thead><tbody>
+    ${revisiones.map((h) => `<tr><td class="num">${fh(h.fecha)}</td><td>${esc(h.consultor)} <span class="mut2">${esc(h.clave)}</span></td><td>${esc(h.usuario)}</td><td>${h.de ? `${badge(h.de)} → ` : ''}${badge(h.a)}</td><td class="mut2 desc">${esc(h.comentario || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">Sin movimientos</td></tr>'}</tbody></table></div></div>
+  <div class="rejilla-2">
     ${admin ? `<div class="tarjeta"><div class="cab"><h2>Usuarios</h2><div class="acciones">
         <button class="btn peq" id="b-lote">Crear cuentas de profesionales</button><button class="btn peq prim" id="b-usr">Nuevo usuario</button></div></div>
       <div class="cuerpo sin tabla-env"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th>Estado</th><th>Último acceso</th><th></th></tr></thead><tbody>

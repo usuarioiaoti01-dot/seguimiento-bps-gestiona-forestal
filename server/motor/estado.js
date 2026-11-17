@@ -6,6 +6,8 @@
  * devuelve el resultado, sin tocar la base de datos.
  */
 const { aDia } = require('./calendario');
+
+const ESTADOS_SIN_SEGUIMIENTO = ['EN_FORMULACION', 'EN_REVISION_JEFE', 'EN_REVISION_ADMIN', 'OBSERVADO'];
 const { recalcularPlan, evaluarVigencia } = require('./recalculo');
 const { analizarCobertura } = require('./cobertura');
 
@@ -29,7 +31,8 @@ function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbr
     const adendas = contrato ? datos.adendas.filter((a) => a.contrato_id === contrato.contrato_id && a.activo !== 0 && a.activo !== false) : [];
     const planes = datos.planes.filter((p) => p.consultor_id === c.consultor_id && p.activo !== 0 && p.activo !== false);
     const plan = planes.sort((x, y) => y.plan_id - x.plan_id)[0] || null;
-    const actividades = plan ? datos.actividades.filter((a) => a.plan_id === plan.plan_id && a.activo !== 0 && a.activo !== false) : [];
+    // Un plan en formulación o en revisión aún no genera seguimiento: arranca cuando el Administrador lo aprueba
+    const actividades = plan && !ESTADOS_SIN_SEGUIMIENTO.includes(plan.estado) ? datos.actividades.filter((a) => a.plan_id === plan.plan_id && a.activo !== 0 && a.activo !== false) : [];
     const pronostico = plan
       ? recalcularPlan({ plan, actividades, dependencias: datos.dependencias, feriados, corte, metodo, spiMinimo })
       : null;
@@ -84,6 +87,12 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
     // Plan vs vigencia
     if (it.plan && it.plan.estado === 'POR_REGISTRAR') {
       add('MEDIA', 'PLAN_POR_REGISTRAR', it, 'Plan de trabajo por registrar', `El plan (${it.plan.fuente || 'sin fuente'}) no tiene actividades registradas.`, 'Registrar las actividades del plan para habilitar el pronóstico.');
+    }
+    if (it.plan && it.plan.estado === 'OBSERVADO' && it.plan.fecha_subsanacion) {
+      const dias = aDia(it.plan.fecha_subsanacion) - hoy;
+      add(dias < 0 ? 'ALTA' : 'MEDIA', 'PLAN_OBSERVADO', it, dias < 0 ? `Plazo para subsanar el plan vencido hace ${-dias} día(s)` : `Plan observado: plazo para subsanar hasta el ${ff(it.plan.fecha_subsanacion)}`,
+        `${it.plan.observacion_revision || 'Plan de trabajo observado.'} Plazo: ${ff(it.plan.fecha_subsanacion)}${dias >= 0 ? ` (${dias} día(s))` : ''}.`,
+        dias < 0 ? 'Exigir la subsanación al profesional o definir un nuevo plazo.' : 'Hacer seguimiento a la subsanación del plan de trabajo.');
     }
     if (pr && pr.numero_actividades && v.holgura_dias !== null) {
       if (v.holgura_dias < 0) {

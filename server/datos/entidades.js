@@ -19,11 +19,11 @@ const ENTIDADES = {
   },
   plan_trabajo: {
     tabla: 'sgf.plan_trabajo', pk: 'plan_id', coleccion: 'planes',
-    columnas: ['consultor_id', 'adenda_id', 'nombre', 'version_plan', 'fuente', 'fecha_recepcion', 'estado', 'tipo_dias', 'observacion', 'activo'],
+    columnas: ['consultor_id', 'adenda_id', 'nombre', 'version_plan', 'fuente', 'fecha_recepcion', 'estado', 'tipo_dias', 'observacion', 'fecha_aprobacion', 'fecha_subsanacion', 'observacion_revision', 'area_usuaria', 'referencia_lb', 'supuestos', 'fecha_envio', 'fecha_aprobacion_jefe', 'aprobado_jefe_por', 'activo'],
   },
   actividad: {
     tabla: 'sgf.actividad', pk: 'actividad_id', coleccion: 'actividades',
-    columnas: ['plan_id', 'numero', 'orden', 'descripcion', 'producto', 'edt_ref', 'clasificacion', 'entregable_id', 'control_cambio_id', 'es_hito', 'es_resumen', 'inicio_plan', 'fin_plan', 'inicio_real', 'fin_real', 'avance', 'estado', 'evidencia', 'observacion', 'fecha_revision', 'activo'],
+    columnas: ['plan_id', 'numero', 'orden', 'descripcion', 'producto', 'edt_ref', 'clasificacion', 'entregable_id', 'control_cambio_id', 'es_hito', 'es_resumen', 'inicio_plan', 'fin_plan', 'inicio_real', 'fin_real', 'avance', 'estado', 'evidencia', 'observacion', 'fecha_revision', 'dias_plan', 'subactividades', 'agregada_por', 'activo'],
   },
   actividad_dependencia: {
     tabla: 'sgf.actividad_dependencia', pk: 'dependencia_id', coleccion: 'dependencias', sinRevision: true,
@@ -40,11 +40,11 @@ const ENTIDADES = {
 };
 
 const COLUMNAS_FECHA = new Set([
-  'fecha_inicio', 'fecha_fin', 'fecha_suscripcion', 'fecha_recepcion', 'inicio_lb', 'fin_lb', 'fecha_corte_lb', 'fecha',
+  'fecha_inicio', 'fecha_fin', 'fecha_suscripcion', 'fecha_recepcion', 'fecha_aprobacion', 'fecha_subsanacion', 'fecha_envio', 'fecha_aprobacion_jefe', 'inicio_lb', 'fin_lb', 'fecha_corte_lb', 'fecha',
   'inicio_plan', 'fin_plan', 'inicio_real', 'fin_real', 'fecha_revision', 'fecha_corte', 'inicio_probable', 'fin_probable', 'fin_vigencia',
 ]);
 
-const NUMERICAS = new Set(['consultor_id', 'contrato_id', 'adenda_id', 'plan_id', 'actividad_id', 'predecesora_id', 'entregable_id', 'control_cambio_id', 'orden', 'plazo_dias', 'plazo_solicitado_dias', 'inicio_calculado', 'es_hito', 'es_resumen', 'avance', 'avance_corte', 'desfase_dias', 'activo']);
+const NUMERICAS = new Set(['consultor_id', 'contrato_id', 'adenda_id', 'plan_id', 'actividad_id', 'predecesora_id', 'entregable_id', 'control_cambio_id', 'orden', 'dias_plan', 'plazo_dias', 'plazo_solicitado_dias', 'inicio_calculado', 'es_hito', 'es_resumen', 'avance', 'avance_corte', 'desfase_dias', 'activo']);
 
 function filtrarColumnas(entidad, cambios) {
   const meta = ENTIDADES[entidad];

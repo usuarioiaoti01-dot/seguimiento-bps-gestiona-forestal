@@ -4,7 +4,7 @@
  * Todas las escrituras pasan por aquí: validan, aplican reglas de
  * consistencia, registran bitácora (vía repositorio) y disparan el recálculo.
  */
-const { aDia, aFecha: diaAFecha, hoyLima } = require('./motor/calendario');
+const { aDia, aFecha: diaAFecha, hoyLima, crearCalendario } = require('./motor/calendario');
 const { recalcularPlan } = require('./motor/recalculo');
 const { construirEstado, coberturaLineaBase, parametro } = require('./motor/estado');
 const { ENTIDADES, filtrarColumnas } = require('./datos/entidades');
@@ -12,7 +12,7 @@ const { ENTIDADES, filtrarColumnas } = require('./datos/entidades');
 const ESTADOS_ACTIVIDAD = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA', 'ANULADA'];
 const CLASIFICACIONES = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
 const ESTADOS_ADENDA = ['ANUNCIADA', 'EN_TRAMITE', 'FIRMADA', 'ANULADA', 'CONCLUIDA'];
-const ESTADOS_PLAN = ['POR_REGISTRAR', 'RECIBIDO', 'OBSERVADO', 'APROBADO'];
+const ESTADOS_PLAN = ['POR_REGISTRAR', 'RECIBIDO', 'EN_FORMULACION', 'EN_REVISION_JEFE', 'EN_REVISION_ADMIN', 'OBSERVADO', 'APROBADO'];
 const ESTADOS_CC = ['BORRADOR', 'APROBADO', 'RECHAZADO'];
 
 const error = (estado, mensaje, extra = {}) => Object.assign(new Error(mensaje), { estado, ...extra });
@@ -253,6 +253,31 @@ function crearServicio(repo) {
   }
 
   /** Adopta las fechas probables como nuevas fechas del plan (reprogramación formal). */
+  /**
+   * Revisión del plan de trabajo: aprobarlo (queda la fecha de aprobación) u observarlo (exige la observación y el
+   * plazo para subsanar). Pasa por actualizarEntidad: validaciones, revisión optimista, bitácora y recálculo.
+   */
+  async function revisarPlan(plan_id, { decision, observacion, plazo } = {}, ctx) {
+    const d = await datos(true);
+    const plan = d.planes.find((p) => p.plan_id === Number(plan_id) && p.activo !== 0 && p.activo !== false);
+    if (!plan) throw error(404, 'Plan no encontrado');
+    const hoy = hoyLima();
+    let campos;
+    if (decision === 'APROBAR') {
+      campos = { estado: 'APROBADO', fecha_aprobacion: hoy, fecha_subsanacion: null, observacion_revision: null };
+    } else if (decision === 'OBSERVAR') {
+      const obs = String(observacion || '').trim();
+      if (obs.length < 5) throw error(400, 'Indique la observación al plan (mínimo 5 caracteres)');
+      if (!esFecha(plazo)) throw error(400, 'Indique el plazo para subsanar (fecha límite)');
+      if (plazo < hoy) throw error(400, 'El plazo para subsanar no puede ser anterior a hoy');
+      campos = { estado: 'OBSERVADO', fecha_aprobacion: null, fecha_subsanacion: plazo, observacion_revision: obs };
+    } else {
+      throw error(400, 'Decisión no válida: use APROBAR u OBSERVAR');
+    }
+    const motivo = ctx.motivo || (decision === 'APROBAR' ? 'Aprobación del plan de trabajo' : 'Observación al plan de trabajo');
+    return actualizarEntidad('plan_trabajo', plan.plan_id, { ...campos, revision: plan.revision }, { ...ctx, motivo });
+  }
+
   async function adoptarPronostico(plan_id, ctx) {
     if (!ctx.motivo || ctx.motivo.trim().length < 5) throw error(400, 'La reprogramación formal requiere motivo', { requiereMotivo: true });
     const d = await datos(true);
@@ -286,7 +311,8 @@ function crearServicio(repo) {
       }
     },
     plan_trabajo: (f, previa = {}) => {
-      validarFechas(f, ['fecha_recepcion']);
+      validarFechas(f, ['fecha_recepcion', 'fecha_aprobacion', 'fecha_subsanacion', 'fecha_envio', 'fecha_aprobacion_jefe']);
+      if (typeof f.observacion_revision === 'string' && f.observacion_revision.length > 1000) throw error(400, `La observación admite hasta 1000 caracteres (tiene ${f.observacion_revision.length})`);
       const m = { ...previa, ...f };
       if (m.estado && !ESTADOS_PLAN.includes(m.estado)) throw error(400, 'Estado de plan no válido');
       if (m.tipo_dias && !['CALENDARIO', 'HABILES'].includes(m.tipo_dias)) throw error(400, 'Tipo de días no válido');
@@ -347,6 +373,36 @@ function crearServicio(repo) {
   }
 
   // ---------------------------------------------------------------- lecturas
+  // Subactividades: JSON [{ t, d, p, a }] (texto, días hábiles, producto, avance 0-100)
+  const subsDe = (a) => { try { const x = JSON.parse((a && a.subactividades) || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } };
+  const avanceDeSubs = (subs) => {
+    const tot = subs.reduce((n, s) => n + (Number(s.d) || 1), 0);
+    return tot ? Math.round(subs.reduce((n, s) => n + (Number(s.d) || 1) * (Number(s.a) || 0), 0) / tot * 100) / 100 : 0;
+  };
+  /** Subactividades con sus fechas (encadenadas en días hábiles dentro de la actividad) y su avance. */
+  function subsConFechas(a, cal) {
+    let cursor = aDia(a.inicio_plan);
+    return subsDe(a).map((s, i) => {
+      const ini = cal.siguienteLaborable(cursor); const fin = cal.finDesde(ini, s.d || 1); cursor = fin + 1;
+      const av = Number(s.a) || 0;
+      return { indice: i, texto: s.t, dias: s.d, producto: s.p || '', avance: av, estado: av >= 100 ? 'CONCLUIDA' : av > 0 ? 'EN_CURSO' : 'PENDIENTE', inicio_plan: diaAFecha(ini), fin_plan: diaAFecha(fin) };
+    });
+  }
+
+  /** Avance de una subactividad: el de la actividad principal se recalcula (promedio ponderado por días). */
+  async function actualizarSubactividad(id, indice, avance, revision, ctx) {
+    const d = await datos(true);
+    const previa = d.actividades.find((a) => a.actividad_id === Number(id));
+    if (!previa) throw error(404, 'Actividad no encontrada');
+    const subs = subsDe(previa);
+    const k = Number(indice);
+    if (!Number.isInteger(k) || k < 0 || k >= subs.length) throw error(404, 'Subactividad no encontrada');
+    const av = Number(avance);
+    if (Number.isNaN(av) || av < 0 || av > 100) throw error(400, 'El avance debe estar entre 0 y 100');
+    subs[k] = { ...subs[k], a: Math.round(av * 100) / 100 };
+    return actualizarActividad(id, { subactividades: JSON.stringify(subs), avance: avanceDeSubs(subs), revision }, ctx);
+  }
+
   async function detalleConsultor(id, { verPersonales = false, corte } = {}) {
     const e = await estado({ corte });
     const d = await datos();
@@ -354,6 +410,7 @@ function crearServicio(repo) {
     if (!it) throw error(404, 'Consultor no encontrado');
     const consultor = { ...it.consultor };
     if (!verPersonales) for (const k of ENTIDADES.consultor.personales) delete consultor[k];
+    const cal = crearCalendario({ tipo: 'HABILES', feriados: d.feriados });
     const deps = it.plan ? d.dependencias.filter((x) => x.activo !== 0 && it.actividades.some((a) => a.actividad_id === x.actividad_id)) : [];
     return {
       corte: e.corte, metodo: e.metodo, consultor, contrato: it.contrato,
@@ -361,7 +418,7 @@ function crearServicio(repo) {
       plan: it.plan, pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
       vigencia: it.vigencia,
       cobertura: it.cobertura,
-      actividades: [...it.actividades].sort((a, b) => a.orden - b.orden).map((a) => ({ ...a, pronostico: it.pronostico ? it.pronostico.actividades[a.actividad_id] || null : null, predecesoras: deps.filter((x) => x.actividad_id === a.actividad_id).map((x) => ({ predecesora_id: x.predecesora_id, desfase_dias: x.desfase_dias })) })),
+      actividades: [...it.actividades].sort((a, b) => a.orden - b.orden).map((a) => ({ ...a, subactividades: subsConFechas(a, cal), pronostico: it.pronostico ? it.pronostico.actividades[a.actividad_id] || null : null, predecesoras: deps.filter((x) => x.actividad_id === a.actividad_id).map((x) => ({ predecesora_id: x.predecesora_id, desfase_dias: x.desfase_dias })) })),
       linea_base: it.linea_base.map((lb) => ({ ...lb, cobertura: coberturaLineaBase(lb, d), actividades: d.actividades.filter((a) => a.entregable_id === lb.entregable_id && a.estado !== 'ANULADA').map((a) => a.numero) })),
       controles_cambio: (d.controles_cambio || []).filter((c) => c.consultor_id === Number(id)),
       alertas: e.alertas.filter((a) => a.consultor_id === Number(id)),
@@ -404,7 +461,7 @@ function crearServicio(repo) {
 
   return {
     repo, datos, invalidar, estado, corteVigente, recalcularYGuardar, recalculoDiario,
-    actualizarActividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico,
+    actualizarActividad, actualizarSubactividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico, revisarPlan,
     actualizarEntidad, crearEntidad, detalleConsultor, lineaBase, sanearBitacora,
     consolidarActividad, aDia,
   };

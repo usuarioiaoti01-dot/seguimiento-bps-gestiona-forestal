@@ -4,6 +4,7 @@ import { abrirAsistente } from './asistente.js';
 const ESTADOS = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA'];
 const CLASIF = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
 const POR_PAGINA = 5; // actividades por página en el plan de trabajo
+const subsCerradas = new Set(); // actividades cuyas subactividades se ocultaron (por defecto se ven)
 const paginaActual = { consultor: null, n: 1 }; // sobrevive a "refrescar" tras editar una actividad
 
 /** Divide las actividades en páginas de POR_PAGINA; cada fila resumen viaja con las actividades que encabeza. */
@@ -24,7 +25,7 @@ export function paginarActividades(acts) {
 export async function vistaConsultor(el, [id], modo = '') {
   const conPlan = modo !== 'contrato';
   const q = estado.corte ? `?corte=${estado.corte}` : '';
-  const [d, bit] = await Promise.all([api('GET', `/consultores/${id}${q}`), api('GET', `/bitacora?consultor_id=${id}&limite=25`)]);
+  const d = await api('GET', `/consultores/${id}${q}`);
   const c = d.consultor; const v = d.vigencia; const p = d.pronostico; const k = d.contrato || {};
   const editor = puede('EDITOR');
   titulo(c.nombres, `${esc(c.clave)} · ${esc(c.perfil || '')} · corte ${ff(d.corte)}`);
@@ -32,7 +33,8 @@ export async function vistaConsultor(el, [id], modo = '') {
   // Vigencia contractual: solo las adendas suscritas (concluidas y firmadas). Alertas: las dos primeras altas; el resto, en ventana emergente.
   const suscritas = d.adendas.filter((a) => a.estado === 'CONCLUIDA' || a.estado === 'FIRMADA');
   const htmlAlerta = (a) => `<div class="alerta">${badge(a.prioridad)}<div class="t">${esc(a.titulo)}</div><div class="d">${esc(a.detalle)}</div><div class="a">→ ${esc(a.accion)}</div></div>`;
-  const altasVisibles = d.alertas.filter((a) => a.prioridad === 'ALTA').slice(0, 2);
+  // El plazo para subsanar un plan observado va siempre primero; luego las altas (en total, dos en la tarjeta)
+  const altasVisibles = [...d.alertas.filter((a) => a.codigo === 'PLAN_OBSERVADO'), ...d.alertas.filter((a) => a.prioridad === 'ALTA' && a.codigo !== 'PLAN_OBSERVADO')].slice(0, 2);
   const desvioPlan = p && p.fin_probable && p.fin_plan ? dia(p.fin_probable) - dia(p.fin_plan) : null;
 
   el.innerHTML = `
@@ -43,7 +45,7 @@ export async function vistaConsultor(el, [id], modo = '') {
       <div class="mut2">${esc(k.titulo_tdr || '')}${c.recurso_cronograma ? ` · Recurso en cronograma: ${esc(c.recurso_cronograma)}` : ''}</div></div></div>
     <div class="acciones">${badge(v.semaforo)}
       ${estado.ia ? '<button class="btn" id="b-ia">Preguntar al asistente</button>' : ''}
-      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : `<a class="btn" href="${conPlan ? '#/seguimiento' : '#/adendas'}">${conPlan ? '← Seguimiento Actividades' : '← Contratos y adendas'}</a>`}</div>
+      ${editor ? '<button class="btn" id="b-datos">Editar datos</button>' : ''}${esProfesional() ? '' : `<a class="btn" href="${conPlan ? '#/seguimiento' : '#/adendas'}">← Volver a lo Anterior</a>`}</div>
   </div></div>
 
   <div class="rejilla-2">
@@ -93,10 +95,7 @@ export async function vistaConsultor(el, [id], modo = '') {
         ${d.controles_cambio.map((x) => `<div class="alerta" data-cc="${x.control_cambio_id}" style="cursor:pointer">${badge(x.estado)}<div class="t">${esc(x.titulo)}</div><div class="d">${ff(x.fecha)} · ${esc(x.documento_ref || '')}</div></div>`).join('') || '<div class="vacio">Sin actas</div>'}</div></div>
     <div class="tarjeta"><div class="cab"><h2>Evolución del término probable</h2></div><div class="cuerpo">${evolucion(d.historial_pronostico)}</div></div>
   </div>
-
-  <div class="tarjeta"><div class="cab"><h2>Últimos cambios</h2><a class="btn peq" href="#/bitacora">Ver bitácora completa</a></div><div class="cuerpo sin tabla-env"><table>
-    <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Registro</th><th>Cambios</th><th>Motivo</th></tr></thead>
-    <tbody>${bit.map((b) => `<tr><td class="num">${fh(b.fecha)}</td><td>${esc(b.usuario)}${b.origen === 'IA' ? ' ' + badge('NUEVA', 'IA') : ''}</td><td>${esc(b.accion)}</td><td>${esc(b.entidad)} ${b.entidad_id ?? ''}</td><td class="diff">${diffHtml(b.cambios_json)}</td><td class="mut2">${esc(b.motivo || '')}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Sin cambios registrados</td></tr>'}</tbody></table></div></div>`;
+`;
 
   if (conPlan) pintarActividades(el.querySelector('#tabla-act'), d, editor);
   conectar(el, d, editor);
@@ -154,11 +153,24 @@ function pintarActividades(cont, d, editor) {
     const pr = a.pronostico || {};
     const res = a.es_resumen;
     const anul = a.estado === 'ANULADA';
-    const editable = editor && !res && !anul;
-    const editaEstado = (editor || esProfesional()) && !res && !anul; // el Profesional solo cambia el estado (y el avance en «Editar»)
-    return `<tr class="${res ? 'resumen' : ''} ${anul ? 'anulada' : ''}" data-act="${a.actividad_id}">
-      <td class="num">${pr.critica ? '<span class="critica" title="Ruta crítica">◆</span> ' : ''}${esc(a.numero)}</td>
-      <td class="desc">${esc(a.descripcion)}<small>${badge(a.clasificacion)} ${a.edt_ref ? esc(a.edt_ref) : ''}${a.es_hito ? ' · hito' : ''}${a.predecesoras.length ? ` · depende de ${a.predecesoras.map((p) => esc((acts.find((y) => y.actividad_id === p.predecesora_id) || {}).numero || p.predecesora_id)).join(', ')}` : ''}</small></td>
+    const subs = a.subactividades || [];
+    const conSubs = subs.length > 0;
+    const editable = editor && !res && !anul && !conSubs; // con subactividades, el avance y el estado de la principal salen de ellas
+    const editaEstado = (editor || esProfesional()) && !res && !anul && !conSubs; // el Profesional solo cambia el estado (y el avance en «Editar»)
+    const editaSub = (editor || esProfesional()) && !anul;
+    const filasSub = subs.map((s) => `<tr class="act-sub-seg" data-subde="${a.actividad_id}" data-sub="${s.indice}">
+      <td class="num mut2">${esc(a.numero)}.${s.indice + 1}</td>
+      <td class="desc"><span class="sub-t">${esc(s.texto)}</span>${s.producto ? `<small>Evidencia: ${esc(s.producto)}</small>` : ''}</td>
+      <td class="num" style="white-space:nowrap"><span class="mut2">Plan</span> ${ffc(s.inicio_plan)}–${ffc(s.fin_plan)}<br><span class="mut2">${s.dias} d háb.</span></td>
+      <td>${editaSub ? `<input class="en-linea num" type="number" min="0" max="100" step="5" value="${s.avance}" data-subavance aria-label="Avance % de la subactividad ${esc(a.numero)}.${s.indice + 1}">` : `<span class="num">${pct(s.avance)}</span>`}</td>
+      <td>${badge(s.estado)}</td>
+      <td class="mut2">—</td>
+      <td><div class="gantt">${lineas}
+        <div class="plan sub" style="left:${x(s.inicio_plan)}%;width:${w(s.inicio_plan, s.fin_plan)}%" title="Plan: ${ff(s.inicio_plan)} – ${ff(s.fin_plan)}"><div class="lleno" style="width:${s.avance}%"></div></div></div></td>
+      <td></td></tr>`).join('');
+    return `<tr class="${res ? 'resumen' : ''} ${anul ? 'anulada' : ''} ${conSubs ? 'con-subs' : ''}" data-act="${a.actividad_id}">
+      <td class="num">${conSubs ? `<button type="button" class="btn peq desplegar" data-subtoggle aria-expanded="${!subsCerradas.has(a.actividad_id) ? 'true' : 'false'}" title="Mostrar u ocultar las subactividades">${!subsCerradas.has(a.actividad_id) ? '▾' : '▸'}</button> ` : ''}${pr.critica ? '<span class="critica" title="Ruta crítica">◆</span> ' : ''}${esc(a.numero)}</td>
+      <td class="desc">${esc(a.descripcion)}<small>${badge(a.clasificacion)} ${a.edt_ref ? esc(a.edt_ref) : ''}${a.es_hito ? ' · hito' : ''}${conSubs ? ` · ${subs.length} subactividad${subs.length === 1 ? '' : 'es'}` : ''}${a.predecesoras.length ? ` · depende de ${a.predecesoras.map((p) => esc((acts.find((y) => y.actividad_id === p.predecesora_id) || {}).numero || p.predecesora_id)).join(', ')}` : ''}</small></td>
       <td class="num" style="white-space:nowrap"><span class="mut2">Plan</span> ${ffc(a.inicio_plan)}–${ffc(a.fin_plan)}<br><span class="mut2">Real</span> ${a.inicio_real || a.fin_real ? `${a.inicio_real ? ffc(a.inicio_real) : '…'}–${a.fin_real ? ffc(a.fin_real) : '…'}` : '<span class="mut2">sin registro</span>'}</td>
       <td>${editable ? `<input class="en-linea num" type="number" min="0" max="100" step="5" value="${Number(a.avance)}" data-campo="avance" aria-label="Avance %">` : `<span class="num">${pct(a.avance)}</span>`}</td>
       <td>${editaEstado ? `<select class="en-linea" data-campo="estado" aria-label="Estado">${opciones(ESTADOS.map((s) => [s, ETIQ[s][0]]), a.estado)}</select>` : badge(a.estado)}</td>
@@ -166,8 +178,16 @@ function pintarActividades(cont, d, editor) {
       <td><div class="gantt">${lineas}
         <div class="plan" style="left:${x(a.inicio_plan)}%;width:${w(a.inicio_plan, a.fin_plan)}%" title="Plan: ${ff(a.inicio_plan)} – ${ff(a.fin_plan)}"></div>
         ${pr.inicio_probable ? `<div class="prob ${esc(pr.situacion)}" style="left:${x(pr.inicio_probable)}%;width:${w(pr.inicio_probable, pr.fin_probable)}%" title="Probable: ${ff(pr.inicio_probable)} – ${ff(pr.fin_probable)}"><div class="lleno" style="width:${Number(a.avance)}%"></div></div>` : ''}</div></td>
-      <td>${!res && !anul ? `<button class="btn peq" data-editar="${a.actividad_id}">${editor || esProfesional() ? 'Editar' : 'Ver'}</button>` : ''}</td></tr>`;
+      <td>${!res && !anul ? `<button class="btn peq" data-editar="${a.actividad_id}">${editor || esProfesional() ? 'Editar' : 'Ver'}</button>` : ''}</td></tr>${filasSub}`;
   }).join('')}</tbody></table>${paginador}`;
+  cont.querySelectorAll('tr.act-sub-seg').forEach((tr) => { tr.hidden = subsCerradas.has(Number(tr.dataset.subde)); });
+  cont.querySelectorAll('[data-subtoggle]').forEach((b) => {
+    b.onclick = () => {
+      const id = Number(b.closest('tr').dataset.act);
+      if (subsCerradas.has(id)) subsCerradas.delete(id); else subsCerradas.add(id);
+      pintarActividades(cont, d, editor);
+    };
+  });
   cont.querySelectorAll('[data-pag]').forEach((b) => { b.onclick = () => { paginaActual.n = Number(b.dataset.pag); pintarActividades(cont, d, editor); }; });
   conectarActividades(cont, d, editor);
 }
@@ -189,6 +209,19 @@ function conectarActividades(cont, d, editor) {
     };
   });
   cont.querySelectorAll('[data-editar]').forEach((b) => { b.onclick = () => editarActividad(act(b.dataset.editar), d, editor); });
+  cont.querySelectorAll('[data-subavance]').forEach((inp) => {
+    inp.onchange = async () => {
+      if (inp.disabled) return;
+      inp.disabled = true;
+      const tr = inp.closest('tr');
+      const a = act(tr.dataset.subde);
+      try {
+        await api('PATCH', `/actividades/${a.actividad_id}/subactividades/${tr.dataset.sub}`, { avance: Number(inp.value), revision: a.revision });
+        aviso(`Subactividad ${a.numero}.${Number(tr.dataset.sub) + 1} actualizada · el avance de la actividad ${a.numero} se recalculó`, 'exito');
+        window.sgfRefrescar();
+      } catch (err) { inp.disabled = false; fallo(err); if (err.estado === 409) window.sgfRefrescar(); }
+    };
+  });
 }
 
 function conectar(el, d, editor) {
@@ -267,7 +300,7 @@ async function editarActividad(a, d, editor) {
   const preds = new Map((a.predecesoras || []).map((p) => [p.predecesora_id, p.desfase_dias]));
   const dis = editor ? '' : 'disabled';
   const prof = esProfesional(); // solo puede cambiar el avance
-  const disAvance = editor || prof ? '' : 'disabled';
+  const disAvance = (editor || prof) && !(a.subactividades || []).length ? '' : 'disabled'; // con subactividades el avance sale de ellas
   const r = await modal({
     titulo: nueva ? 'Agregar actividad al plan' : `Actividad ${a.numero}`,
     ancho: 820,

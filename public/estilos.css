@@ -276,3 +276,51 @@ select.en-linea { max-width: 128px; }
 .tabla-adendas tr.grupo .ver-ficha { float: right; font-size: 12.5px; font-weight: 600; color: var(--marca-2); }
 .tabla-adendas tr.hija td { vertical-align: top; }
 .tabla-adendas tr.enc th { background: transparent; border-bottom: 1px solid var(--borde); }
+
+/* Formular Plan de Trabajo */
+.etapas { display: flex; flex-wrap: wrap; gap: 8px; }
+.etapa { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--borde); border-radius: 999px; font-size: 13px; color: var(--texto-2); }
+.etapa i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--superficie-2); font-size: 12px; font-weight: 700; }
+.etapa.hecha { color: var(--verde); border-color: var(--verde); }
+.etapa.actual { color: #fff; background: var(--marca); border-color: var(--marca); font-weight: 600; }
+.etapa.actual i { background: rgba(255,255,255,.25); }
+.tabla-datos th { width: 280px; text-align: left; font-weight: 600; color: var(--texto-2); vertical-align: top; background: transparent; }
+.tabla-datos td { vertical-align: top; }
+
+.subs { margin: 4px 0 0; padding-left: 18px; color: var(--texto-2); font-size: 13px; }
+.fila-sub, .fila-doc { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.fila-sub input { flex: 1; }
+.doc-pdf { display: block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+
+.dias2 { width: 70px; flex: 0 0 70px; text-align: center; }
+.fila-sub { display: block; padding: 8px; border: 1px solid var(--borde, #d8dee4); border-radius: 8px; margin-bottom: 8px; }
+.fila-sub .sub-cab { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.fila-sub .sub-cab input[name=sub] { flex: 1 1 auto; min-width: 0; }
+.fila-sub textarea { width: 100%; min-height: 54px; }
+.act-cab > td { background: #f2f4f2; }
+.act-sub > td { font-size: 13px; }
+.act-sub > td:nth-child(3) { padding-left: 22px; }
+.grupo.plegado .act-sub { display: none; }
+.desplegar { padding: 0 6px; }
+
+.dias2 { width: 96px !important; flex: 0 0 96px !important; padding: 8px 4px !important; text-align: center; font-weight: 600; -moz-appearance: textfield; appearance: textfield; }
+.dias2::-webkit-outer-spin-button, .dias2::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fila-sub .sub-cab input { background: #e8f1ea; border-color: #b9d3bf; }
+.fila-sub .sub-et { display: block; margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--texto-2, #555); }
+
+.fila-sub .sub-cab { align-items: flex-end; }
+.fila-sub .sub-txt { flex: 1 1 auto; min-width: 0; }
+.fila-sub .sub-txt input { width: 100%; }
+
+.marca-jefe { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 10px; background: #fff3d6; color: #8a5a00; border: 1px solid #f0d28a; font-size: 11px; font-weight: 600; }
+.grupo.de-jefe .act-cab > td:first-child { box-shadow: inset 4px 0 0 #e0a93a; }
+.grupo.de-jefe .act-cab > td { background: #fff9ea; }
+
+/* Subactividades anidadas en el seguimiento */
+tr.con-subs > td { background: #f6f8f6; }
+tr.act-sub-seg > td { background: #fbfdfb; border-top: 1px dashed var(--borde, #d8ddd9); }
+tr.act-sub-seg > td.desc { padding-left: 28px; }
+tr.act-sub-seg .sub-t { font-size: .95em; }
+tr.act-sub-seg .gantt .plan.sub { background: #e4efe7; border: 1px solid #8fb79c; height: 10px; }
+tr.act-sub-seg .gantt .plan.sub { top: 7px; }
+tr.act-sub-seg .gantt .plan.sub .lleno { position: absolute; inset: 0 auto 0 0; background: #3f8f5f; border-radius: 3px; }

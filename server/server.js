@@ -11,9 +11,11 @@ const { crearRepositorio } = require('./datos');
 const { crearServicio } = require('./servicio');
 const { crearAgente } = require('./ia/agente');
 const seg = require('./seguridad');
-const { hoyLima } = require('./motor/calendario');
+const { hoyLima, aDia } = require('./motor/calendario');
 const { crearPlanesPdf } = require('./planes-pdf');
 const { crearDocumentos } = require('./documentos');
+const { crearFormulacion } = require('./formulacion');
+const { crearActividadDocs } = require('./actividad-docs');
 const { plantillaXlsx } = require('./documentos/plantilla');
 
 async function crearApp() {
@@ -62,6 +64,7 @@ async function crearApp() {
       if (!mio) return denegar('Su cuenta no está vinculada a un profesional');
       const p = req.path; const m = req.method; let g;
       if (m === 'GET' && p === '/parametros') return next();
+      if (p.startsWith('/formulacion/')) return next(); // formular su plan; el servicio exige que sea el suyo y su etapa
       if (m === 'POST' && p === '/ia/mensaje') return next();
       if (m === 'GET' && (g = p.match(/^\/consultores\/(\d+)$/))) return Number(g[1]) === mio ? next() : denegar();
       if (m === 'GET' && p === '/bitacora') return String(req.query.consultor_id) === String(mio) ? next() : denegar();
@@ -69,7 +72,7 @@ async function crearApp() {
         const plan = (await servicio.datos()).planes.find((x) => x.plan_id === Number(g[1]));
         return plan && plan.consultor_id === mio ? next() : denegar();
       }
-      if (m === 'PATCH' && (g = p.match(/^\/actividades\/(\d+)$/))) {
+      if (m === 'PATCH' && (g = p.match(/^\/actividades\/(\d+)(?:\/subactividades\/\d+)?$/))) {
         const d = await servicio.datos();
         const act = d.actividades.find((x) => x.actividad_id === Number(g[1]));
         const plan = act && d.planes.find((x) => x.plan_id === act.plan_id);
@@ -84,6 +87,9 @@ async function crearApp() {
   const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
   const adendasPdf = crearPlanesPdf({ dir: config.adendasPdf, prefijo: 'adenda' });
   const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, adendasPdf, extraerConIA: (a) => agente.extraerDocumento(a) });
+  const actividadDocs = crearActividadDocs({ dir: config.actividadesPdf });
+  const formulacion = crearFormulacion({ servicio, repo, docs: actividadDocs, planesPdf });
+  const ctxF = (req) => ({ ...ctx(req), consultor_id: req.usuario.consultor_id });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
   const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
 
@@ -218,7 +224,8 @@ async function crearApp() {
         historial_adendas: it.adendas.filter((a) => a.estado === 'CONCLUIDA').sort((a, b) => a.numero - b.numero)
           .map((a) => ({ numero: a.numero, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin, plazo_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null })),
         cobertura: it.cobertura,
-        plan: it.plan && { plan_id: it.plan.plan_id, estado: it.plan.estado, nombre: it.plan.nombre },
+        plan: it.plan && { plan_id: it.plan.plan_id, estado: it.plan.estado, nombre: it.plan.nombre, fecha_aprobacion: it.plan.fecha_aprobacion || null, fecha_subsanacion: it.plan.fecha_subsanacion || null, observacion_revision: it.plan.observacion_revision || null, tiene_pdf: planesPdf.info(it.plan.plan_id).existe,
+          dias_aprobacion: (() => { const a = it.plan.fecha_aprobacion && it.adendas.find((x) => x.adenda_id === it.plan.adenda_id); return a && a.fecha_suscripcion ? aDia(it.plan.fecha_aprobacion) - aDia(a.fecha_suscripcion) : null; })() },
         pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
         atrasadas: it.pronostico ? Object.values(it.pronostico.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion)).length : 0,
         alertas: e.alertas.filter((a) => a.consultor_id === it.consultor.consultor_id).length,
@@ -246,7 +253,8 @@ async function crearApp() {
       res.sendFile(planesPdf.ruta(plan.plan_id), (err) => { if (err && !res.headersSent) next(err); });
     }).catch(next);
   });
-  app.put('/api/planes/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: planesPdf.MAX_BYTES }), h(async (req) => {
+  // PUT y POST: algunos IIS (módulo WebDAV) rechazan PUT; el cliente usa POST
+  const guardarPdfPlan = h(async (req) => {
     const plan = await planDe(req.params.id);
     let motivo = '';
     try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
@@ -254,6 +262,40 @@ async function crearApp() {
     const r = planesPdf.guardar(plan.plan_id, req.body);
     await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: plan.plan_id, consultor_id: plan.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
     return { ok: true, ...planesPdf.info(plan.plan_id) };
+  });
+  for (const metodo of ['put', 'post']) app[metodo]('/api/planes/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: planesPdf.MAX_BYTES }), guardarPdfPlan);
+  // Formulación del plan de trabajo (plantilla del cronograma): cada dato se graba al registrarlo; el flujo y los permisos los impone el servicio.
+  app.get('/api/formulacion/historial', seg.requiere('EDITOR'), h((req) => formulacion.historialGeneral(ctxF(req))));
+  app.get('/api/formulacion/:id', seg.requiere('LECTOR'), h((req) => formulacion.detalle(req.params.id, ctxF(req))));
+  app.put('/api/formulacion/:id/cabecera', seg.requiere('LECTOR'), h((req) => formulacion.guardarCabecera(req.params.id, req.body || {}, ctxF(req))));
+  app.post('/api/formulacion/:id/actividades', seg.requiere('LECTOR'), h((req) => formulacion.agregarActividad(req.params.id, req.body || {}, ctxF(req))));
+  app.patch('/api/formulacion/actividades/:id', seg.requiere('LECTOR'), h((req) => formulacion.modificarActividad(req.params.id, req.body || {}, ctxF(req))));
+  // Documentos PDF de respaldo de cada actividad
+  app.post('/api/formulacion/actividades/:id/documentos', seg.requiere('LECTOR'), express.raw({ type: 'application/pdf', limit: actividadDocs.MAX_BYTES }), h((req) => {
+    let nombre = ''; try { nombre = decodeURIComponent(req.get('X-Nombre') || ''); } catch { /* cabecera mal codificada */ }
+    return formulacion.agregarDocumento(req.params.id, req.body, nombre, ctxF(req));
+  }));
+  app.post('/api/formulacion/actividades/:id/documentos/:n/quitar', seg.requiere('LECTOR'), h((req) => formulacion.quitarDocumento(req.params.id, req.params.n, ctxF(req))));
+  app.get('/api/formulacion/actividades/:id/documentos/:n', seg.requiere('LECTOR'), (req, res, next) => {
+    formulacion.rutaDocumento(req.params.id, req.params.n, ctxF(req)).then((r) => {
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${encodeURIComponent(r.nombre)}"`, 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'" });
+      res.sendFile(r.archivo, (err) => { if (err && !res.headersSent) next(err); });
+    }).catch(next);
+  });
+  app.post('/api/formulacion/actividades/:id/quitar', seg.requiere('LECTOR'), h((req) => formulacion.quitarActividad(req.params.id, ctxF(req))));
+  app.post('/api/formulacion/:id/transicion', seg.requiere('LECTOR'), h((req) => formulacion.transicion(req.params.id, (req.body || {}).accion, (req.body || {}).comentario, ctxF(req))));
+  // PDF del plan aprobado: lo genera solo el Administrador y queda como el PDF del plan (versión anterior conservada)
+  app.post('/api/formulacion/:id/pdf', seg.requiere('ADMIN'), h(async (req) => {
+    const g = await formulacion.generarPdf(req.params.id, ctxF(req));
+    const r = planesPdf.guardar(g.plan_id, g.buffer);
+    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: g.plan_id, consultor_id: g.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo: 'PDF del plan de trabajo aprobado generado por el Administrador', origen: 'UI' });
+    return { ok: true, plan_id: g.plan_id, ...planesPdf.info(g.plan_id) };
+  }));
+  // Revisión del plan: aprobarlo u observarlo (con observación y plazo para subsanar). Exige el PDF del plan.
+  app.post('/api/planes/:id/revision', seg.requiere('EDITOR'), h(async (req) => {
+    const plan = await planDe(req.params.id);
+    if (!planesPdf.info(plan.plan_id).existe) throw Object.assign(new Error('Cargue primero el PDF del plan de trabajo'), { estado: 400 });
+    return servicio.revisarPlan(plan.plan_id, req.body || {}, ctx(req));
   }));
   // PDF de cada adenda: lo muestra el visor de Contratos y adendas y lo adjunta un EDITOR (mismo mecanismo que el plan).
   const adendaDe = async (id) => {
@@ -284,12 +326,17 @@ async function crearApp() {
   // PUT y POST: algunos IIS (módulo WebDAV) rechazan PUT con 405; la interfaz usa POST.
   for (const metodo of ['put', 'post']) app[metodo]('/api/adendas/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: adendasPdf.MAX_BYTES }), guardarPdfAdenda);
   app.get('/api/linea-base', seg.requiere('LECTOR'), h(() => servicio.lineaBase()));
+  // Plan de trabajo aprobado de la adenda (si su PDF existe): la lista de adendas lo muestra en «Documento»
+  const planAprobadoDe = (d, a) => {
+    const p = d.planes.filter((x) => x.adenda_id === a.adenda_id && x.estado === 'APROBADO' && x.activo !== 0 && x.activo !== false).sort((x, y) => y.plan_id - x.plan_id)[0];
+    return p && planesPdf.info(p.plan_id).existe ? { plan_aprobado: { plan_id: p.plan_id, fecha_aprobacion: p.fecha_aprobacion || null } } : {};
+  };
   app.get('/api/adendas', seg.requiere('LECTOR'), h(async () => {
     const d = await servicio.datos();
     return d.adendas.map((a) => {
       const k = d.contratos.find((x) => x.contrato_id === a.contrato_id) || {};
       const c = d.consultores.find((x) => x.consultor_id === k.consultor_id) || {};
-      return { ...a, contrato: k.numero, consultor_id: c.consultor_id, clave: c.clave, nombres: c.nombres, tiene_pdf: adendasPdf.info(a.adenda_id).existe };
+      return { ...a, contrato: k.numero, consultor_id: c.consultor_id, clave: c.clave, nombres: c.nombres, tiene_pdf: adendasPdf.info(a.adenda_id).existe, ...planAprobadoDe(d, a) };
     }).sort((x, y) => (x.clave || '').localeCompare(y.clave || '') || x.numero - y.numero);
   }));
   app.get('/api/bitacora', seg.requiere('LECTOR'), h(async (req) => {
@@ -324,6 +371,7 @@ async function crearApp() {
   app.patch('/api/actividades/:id', seg.requiere('PROFESIONAL'), (req, res, next) => (req.usuario.rol === 'PROFESIONAL' ? next() : seg.requiere('JEFE_PROYECTO')(req, res, next)), h((req) => servicio.actualizarActividad(req.params.id, req.body, ctx(req))));
   app.post('/api/planes/:id/actividades', seg.requiere('EDITOR'), h((req) => servicio.crearActividad(req.params.id, req.body, ctx(req))));
   app.post('/api/actividades/:id/anular', seg.requiere('EDITOR'), h((req) => servicio.anularActividad(req.params.id, ctx(req))));
+  app.patch('/api/actividades/:id/subactividades/:k', seg.requiere('PROFESIONAL'), (req, res, next) => (req.usuario.rol === 'PROFESIONAL' ? next() : seg.requiere('JEFE_PROYECTO')(req, res, next)), h((req) => servicio.actualizarSubactividad(req.params.id, req.params.k, req.body.avance, req.body.revision, ctx(req))));
   app.put('/api/actividades/:id/predecesoras', seg.requiere('EDITOR'), h((req) => servicio.definirDependencias(req.params.id, req.body.predecesoras, ctx(req))));
   app.post('/api/planes/:id/adoptar-pronostico', seg.requiere('EDITOR'), h((req) => servicio.adoptarPronostico(req.params.id, ctx(req))));
   app.post('/api/simular', seg.requiere('LECTOR'), h((req) => servicio.simular(req.body.cambios, { corte: req.body.corte })));
@@ -355,7 +403,7 @@ async function crearApp() {
   }));
 
   // ------------------------------------------------------------ carga de documentos (Jefe de Proyecto y Administrador)
-  const MAX_DOCUMENTO = 15 * 1024 * 1024;
+  const MAX_DOCUMENTO = 50 * 1024 * 1024;
   app.get('/api/documentos/plantilla.xlsx', seg.requiere('JEFE_PROYECTO'), (req, res, next) => {
     plantillaXlsx().then((buf) => {
       res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="plantilla-actualizacion.xlsx"', 'Cache-Control': 'no-store' });
@@ -369,6 +417,24 @@ async function crearApp() {
     return documentos.previsualizar({ buffer: req.body, nombre: nombre.slice(0, 200), usuario: req.usuario, consultor_id: req.get('X-Profesional') || null, tipo: req.get('X-Tipo') === 'adenda' ? 'adenda' : null });
   }));
   app.post('/api/documentos/aplicar', seg.requiere('JEFE_PROYECTO'), h((req) => documentos.aplicar({ carga_id: req.body && req.body.carga_id, ids: req.body && req.body.ids, ajustes: req.body && req.body.ajustes, usuario: req.usuario })));
+
+  // ------------------------------------------------------------ Actualizar desde archivo (Jefe de Proyecto y Administrador)
+  app.post('/api/actualizar-archivo', seg.requiere('JEFE_PROYECTO'), express.raw({ type: 'application/octet-stream', limit: MAX_DOCUMENTO }), h(async (req) => {
+    let nombre = '';
+    try { nombre = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ }
+    if (!nombre) throw Object.assign(new Error('Falta el nombre del archivo'), { estado: 400 });
+    return documentos.actualizarDesdeArchivo({ buffer: req.body, nombre: nombre.slice(0, 200), usuario: req.usuario });
+  }));
+  app.get('/api/actualizar-archivo', seg.requiere('JEFE_PROYECTO'), h(() => documentos.listarArchivos()));
+  app.get('/api/actualizar-archivo/:id/contenido', seg.requiere('JEFE_PROYECTO'), h((req) => documentos.contenidoArchivo(req.params.id)));
+  app.get('/api/actualizar-archivo/:id/archivo', seg.requiere('JEFE_PROYECTO'), (req, res, next) => {
+    try {
+      const { entrada, archivo } = documentos.buscarArchivo(req.params.id);
+      const inline = entrada.formato === 'pdf' && req.query.descargar !== '1';
+      res.set({ 'Content-Type': entrada.formato === 'pdf' ? 'application/pdf' : 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(entrada.archivo)}`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+      res.sendFile(archivo);
+    } catch (e) { next(e); }
+  });
 
   // ------------------------------------------------------------ asistente de IA
   app.post('/api/ia/mensaje', seg.requiere('LECTOR'), h(async (req) => {

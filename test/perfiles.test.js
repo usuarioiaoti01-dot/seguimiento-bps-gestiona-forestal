@@ -318,3 +318,34 @@ test('documento de adenda por HTTP: el Jefe de Proyecto revisa, ajusta el estado
   const bit = (await jefe('GET', '/api/bitacora?entidad=documento')).cuerpo;
   assert.ok(bit.some((b) => /"tipo":"adenda"/.test(b.cambios_json)));
 });
+
+test('Actualizar desde archivo: aplica lo que concuerda, informa lo demás y deja el documento en el visor', async () => {
+  const subir = (c, cuerpo, nombre) => fetch(`${base}/api/actualizar-archivo`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-SGF': '1', 'X-Nombre': encodeURIComponent(nombre), Cookie: c.cookie() }, body: cuerpo }).then(async (r) => ({ status: r.status, cuerpo: await r.json() }));
+  assert.equal((await fetch(`${base}/api/actualizar-archivo`)).status, 401);
+  const j = (await admin('POST', '/api/usuarios', { correo: 'jefe.act@ejemplo.com', nombre: 'Jefe Act', rol: 'JEFE_PROYECTO' })).cuerpo;
+  const jefe = cliente(); await jefe.entrar('jefe.act@ejemplo.com', j.clave_temporal);
+  const det = (await jefe('GET', `/api/consultores/${ids.ERB}`)).cuerpo;
+  const act = det.actividades.find((a) => !a.es_resumen);
+  const nl = String.fromCharCode(10);
+  const bueno = Buffer.from(['clave;numero;avance;estado', `ERB;${act.numero};55;En curso`, ''].join(nl));
+  const r1 = await subir(jefe, bueno, 'avance-ok.csv');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.cuerpo.aplicados.length, 1);
+  assert.equal(r1.cuerpo.inconsistencias.length, 0, 'todo bien: la carga es exitosa');
+  assert.equal(Number((await jefe('GET', `/api/consultores/${ids.ERB}`)).cuerpo.actividades.find((a) => a.actividad_id === act.actividad_id).avance), 55);
+  const malo = Buffer.from(['clave;numero;avance;estado', 'ZZZ;1;10;En curso', ''].join(nl));
+  const r2 = await subir(jefe, malo, 'avance-malo.csv');
+  assert.equal(r2.status, 200);
+  assert.ok(r2.cuerpo.inconsistencias.length >= 1, 'lo que no se identifica se informa');
+  assert.equal((await subir(jefe, Buffer.from('x'), 'virus.exe')).cuerpo.inconsistencias.length, 1, 'formato no admitido: se informa y no se guarda');
+  const lista = (await jefe('GET', '/api/actualizar-archivo')).cuerpo;
+  assert.deepEqual(lista.map((d) => d.archivo).slice(0, 2), ['avance-malo.csv', 'avance-ok.csv']);
+  assert.ok(!('ruta' in lista[0]) && !('sha256' in lista[0]));
+  const arch = await fetch(`${base}/api/actualizar-archivo/${lista[1].id}/archivo`, { headers: { Cookie: jefe.cookie() } });
+  assert.equal(arch.status, 200);
+  assert.match(await arch.text(), /ERB;/);
+  const cont = (await jefe('GET', `/api/actualizar-archivo/${lista[1].id}/contenido`)).cuerpo;
+  assert.equal(cont.tipo, 'tablas');
+  assert.equal((await jefe('GET', '/api/actualizar-archivo/999/contenido')).estado, 404);
+});

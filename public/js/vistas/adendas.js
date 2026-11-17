@@ -1,5 +1,6 @@
 import { api, esc, ff, titulo, badge, estado, puede, modal, opciones, aviso, fallo, pedirTexto } from '../util.js';
 import { abrirCargaDocumento } from './carga-documento.js';
+import { verPlanPdf } from './plan-pdf.js';
 import { editarAdenda } from './consultor.js';
 
 export async function vistaAdendas(el) {
@@ -99,14 +100,16 @@ export async function vistaAdendas(el) {
     el.querySelector('#cuerpo').innerHTML = [...grupos.values()].map((lista) => {
       const p = lista[0];
       const abierto = abiertos.has(p.consultor_id);
-      const cab = `<tr class="grupo clic" data-id="${p.consultor_id}" aria-expanded="${abierto}"><td colspan="9"><span class="flecha">${abierto ? '▾' : '▸'}</span> <b>${esc(p.nombres.toUpperCase())}</b> <a href="#/contrato/${p.consultor_id}" class="ver-ficha">Ver ficha</a></td></tr>`;
+      const cab = `<tr class="grupo clic" data-id="${p.consultor_id}" aria-expanded="${abierto}"><td colspan="8"><span class="flecha">${abierto ? '▾' : '▸'}</span> <b>${esc(p.nombres.toUpperCase())}</b> <a href="#/contrato/${p.consultor_id}" class="ver-ficha">Ver ficha</a></td></tr>`;
       if (!abierto) return cab;
-      const enc = '<tr class="enc"><th>Profesional</th><th>Contrato</th><th class="c">Adenda</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Documento</th><th>Expediente</th><th>Observación</th></tr>';
-      return cab + enc + lista.map((a) => `<tr class="hija clic" data-adenda="${a.adenda_id}" title="Clic para ver el PDF de la adenda"><td></td><td class="num mut2">${esc(a.contrato)}</td><td class="c num">${String(a.numero).padStart(2, '0')}</td><td>${badge(a.estado)}</td><td class="num">${ff(a.fecha_inicio)}</td><td class="num">${ff(a.fecha_fin)}</td><td class="mut2">${largo(a.documento_ref, `Documento · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}</td><td class="num mut2">${esc(a.expediente || '')}</td><td class="mut2 desc">${largo(a.observacion, `Observación · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}</td></tr>`).join('');
-    }).join('') || '<tr><td colspan="9" class="vacio">Sin resultados</td></tr>';
+      const enc = '<tr class="enc"><th>Contrato</th><th class="c">Adenda</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Documento</th><th>Expediente</th><th>Observación</th></tr>';
+      return cab + enc + lista.map((a) => `<tr class="hija clic" data-adenda="${a.adenda_id}" title="Clic para ver el PDF de la adenda"><td class="num mut2">${esc(a.contrato)}</td><td class="c num">${String(a.numero).padStart(2, '0')}</td><td>${badge(a.estado)}</td><td class="num">${ff(a.fecha_inicio)}</td><td class="num">${ff(a.fecha_fin)}</td><td class="mut2">${largo(a.documento_ref, `Documento · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}${a.plan_aprobado ? `<div><a href="#" class="ver-plan" data-plan="${a.plan_aprobado.plan_id}" data-nombre="${esc(p.nombres)}" title="Ver el plan de trabajo aprobado">Plan Aprobado</a></div>` : ''}</td><td class="num mut2">${esc(a.expediente || '')}</td><td class="mut2 desc">${largo(a.observacion, `Observación · ${p.nombres} · Adenda ${String(a.numero).padStart(2, '0')}`)}</td></tr>`).join('');
+    }).join('') || '<tr><td colspan="8" class="vacio">Sin resultados</td></tr>';
   };
   el.querySelector('#cuerpo').onclick = async (ev) => {
     if (ev.target.closest('.ver-ficha')) return; // el enlace navega solo
+    const vp = ev.target.closest('.ver-plan');
+    if (vp) { ev.preventDefault(); verPlanPdf({ plan_id: Number(vp.dataset.plan), titulo: `Plan de trabajo · ${vp.dataset.nombre.toUpperCase()}`, aprobado: true }); return; }
     const v = ev.target.closest('.ver-todo');
     if (v) {
       ev.preventDefault();

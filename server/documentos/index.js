@@ -106,6 +106,72 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
     return { adenda_id: Number(adendaId), etiqueta };
   }
 
+  // ---- originales conservados: archivo en disco + índice (indice.json) para el visor de «Actualizar desde archivo»
+  const rutaIndice = path.join(dir, 'indice.json');
+  const leerIndice = () => { try { const x = JSON.parse(fs.readFileSync(rutaIndice, 'utf8')); return Array.isArray(x) ? x : []; } catch { return []; } };
+
+  /** Guarda el original (nombre generado: nunca el del cliente), lo anota en el índice y deja la carga en la bitácora. */
+  async function guardarOriginal(carga, usuario, resumen) {
+    const sha256 = crypto.createHash('sha256').update(carga.buffer).digest('hex');
+    const mes = new Date().toISOString().slice(0, 7);
+    const carpeta = path.join(dir, mes);
+    fs.mkdirSync(carpeta, { recursive: true });
+    const archivo = `${Date.now()}-${sha256.slice(0, 10)}${extension(carga.nombre)}`;
+    fs.writeFileSync(path.join(carpeta, archivo), carga.buffer);
+    const indice = leerIndice();
+    const entrada = { id: Math.max(0, ...indice.map((x) => x.id)) + 1, archivo: carga.nombre, formato: carga.formato, ruta: `${mes}/${archivo}`, bytes: carga.buffer.length, sha256, usuario: usuario.correo, fecha: new Date().toISOString(), origen: carga.origen, ...resumen };
+    indice.push(entrada);
+    fs.writeFileSync(rutaIndice, JSON.stringify(indice));
+    await repo.registrarBitacora({
+      usuario: usuario.correo, entidad: 'documento', entidad_id: null, accion: 'CREAR', origen: carga.origen,
+      cambios_json: { archivo: carga.nombre, formato: carga.formato, tipo: carga.tipo || 'general', sha256, bytes: carga.buffer.length, aplicados: resumen.aplicados, fallidos: resumen.fallidos, omitidos: resumen.omitidos },
+      motivo: `Carga del documento «${carga.nombre}»`,
+    });
+    return entrada;
+  }
+
+  /**
+   * «Actualizar desde archivo»: lee un archivo, aplica lo que concuerda con la lógica de la aplicación y devuelve lo que
+   * no pudo identificar o aplicar. Las actividades nuevas (que no están en el plan) no se crean solas: se informan.
+   */
+  async function actualizarDesdeArchivo({ buffer, nombre, usuario }) {
+    const salida = { archivo: nombre, aplicados: [], inconsistencias: [], registro: null };
+    let vista;
+    try { vista = await previsualizar({ buffer, nombre, usuario, consultor_id: null }); } catch (e) {
+      salida.inconsistencias.push({ motivo: e.message }); return salida; // ilegible: no se guarda ni se cambia nada
+    }
+    for (const r of vista.rechazadas) salida.inconsistencias.push({ hoja: r.hoja, fila: r.fila, motivo: r.motivo });
+    const nuevas = vista.cambios.filter((c) => c.accion === 'CREAR' && c.entidad === 'actividad');
+    for (const c of nuevas) salida.inconsistencias.push({ fila: c.fila, referencia: c.etiqueta, motivo: 'No existe en el plan del profesional: la actividad nueva no se crea sola (agréguela en Formular Plan de Trabajo)' });
+    const ids = vista.cambios.filter((c) => !nuevas.includes(c)).map((c) => c.id);
+    const carga = cargas.get(vista.carga_id);
+    if (ids.length) {
+      const r = await aplicar({ carga_id: vista.carga_id, ids, usuario });
+      salida.aplicados = r.aplicados;
+      for (const f of r.fallidos) salida.inconsistencias.push({ referencia: f.etiqueta, motivo: f.motivo });
+      salida.registro = leerIndice().pop() || null;
+    } else {
+      salida.registro = await guardarOriginal(carga, usuario, { aplicados: 0, fallidos: 0, omitidos: nuevas.length, inconsistencias: salida.inconsistencias.map((x) => x.motivo) });
+      cargas.delete(vista.carga_id);
+    }
+    return salida;
+  }
+
+  const listarArchivos = () => leerIndice().reverse().map(({ ruta, sha256, ...x }) => x);
+  function buscarArchivo(id) {
+    const e = leerIndice().find((x) => x.id === Number(id));
+    if (!e) throw error(404, 'Documento no encontrado');
+    const archivo = path.resolve(dir, e.ruta);
+    if (!archivo.startsWith(path.resolve(dir)) || !fs.existsSync(archivo)) throw error(404, 'El archivo ya no está disponible');
+    return { entrada: e, archivo };
+  }
+  /** Contenido para el visor de los formatos que el navegador no muestra (Excel, CSV, XML de Project, Word). */
+  async function contenidoArchivo(id) {
+    const { entrada, archivo } = buscarArchivo(id);
+    const leido = await leer(fs.readFileSync(archivo), entrada.archivo);
+    return leido.tipo === 'tablas' ? { tipo: 'tablas', hojas: leido.hojas.map((h) => ({ nombre: h.nombre, filas: h.filas.slice(0, 300), total: h.filas.length })) } : { tipo: 'texto', texto: String(leido.texto || '').slice(0, 60000) };
+  }
+
   async function aplicar({ carga_id, ids, ajustes, usuario }) {
     limpiar();
     const carga = cargas.get(carga_id);
@@ -128,22 +194,13 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
         }
       } catch (err) { fallidos.push({ id: c.id, etiqueta: c.etiqueta, motivo: err.message }); }
     }
-    // el original se conserva (nombre generado: nunca el del cliente) y la carga queda en la bitácora
-    const sha256 = crypto.createHash('sha256').update(carga.buffer).digest('hex');
-    const carpeta = path.join(dir, new Date().toISOString().slice(0, 7));
-    fs.mkdirSync(carpeta, { recursive: true });
-    const destino = path.join(carpeta, `${Date.now()}-${sha256.slice(0, 10)}${extension(carga.nombre)}`);
-    fs.writeFileSync(destino, carga.buffer);
-    await repo.registrarBitacora({
-      usuario: usuario.correo, entidad: 'documento', entidad_id: null, accion: 'CREAR', origen: carga.origen,
-      cambios_json: { archivo: carga.nombre, formato: carga.formato, tipo: carga.tipo || 'general', sha256, bytes: carga.buffer.length, aplicados: aplicados.length, fallidos: fallidos.length, omitidos: carga.cambios.length - seleccion.length },
-      motivo: `Carga del documento «${carga.nombre}»`,
-    });
+    // el original se conserva y la carga queda en la bitácora y en el índice del visor
+    await guardarOriginal(carga, usuario, { aplicados: aplicados.length, fallidos: fallidos.length, omitidos: carga.cambios.length - seleccion.length, inconsistencias: fallidos.map((f) => `${f.etiqueta}: ${f.motivo}`) });
     cargas.delete(carga_id);
     return { aplicados, fallidos, omitidos: carga.cambios.length - seleccion.length, pdf_adjuntado: pdfs };
   }
 
-  return { previsualizar, aplicar };
+  return { previsualizar, aplicar, actualizarDesdeArchivo, listarArchivos, buscarArchivo, contenidoArchivo };
 }
 
 module.exports = { crearDocumentos };

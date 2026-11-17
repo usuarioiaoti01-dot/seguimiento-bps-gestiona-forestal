@@ -1,6 +1,6 @@
 import { api, esc, ff, modal, opciones, aviso, fallo, badge, ETIQ } from '../util.js';
 
-const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_BYTES = 50 * 1024 * 1024;
 
 const ROTULOS = {
   avance: 'Avance', estado: 'Estado', inicio_plan: 'Inicio del plan', fin_plan: 'Fin del plan', inicio_real: 'Inicio real', fin_real: 'Fin real',
@@ -64,7 +64,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
     contenido: esAdenda
       ? `<p class="mut" style="margin:0">Suba el documento de una adenda (PDF con texto o Word). El asistente de IA lee el contrato, el N.° de adenda, los plazos y las fechas, y se los muestra para revisarlos: <b>no se guarda nada hasta que usted confirme</b>. También acepta Excel o CSV con la hoja «Adendas» de la plantilla.</p>
       <div class="form">
-        <div class="campo ancho"><label>Documento (máx. 15 MB)</label><input type="file" name="archivo" accept=".pdf,.docx,.xlsx,.csv"></div>
+        <div class="campo ancho"><label>Documento (máx. 50 MB)</label><input type="file" name="archivo" accept=".pdf,.docx,.xlsx,.csv"></div>
         <div class="campo ancho"><label>Profesional (opcional: si el documento no indica el contrato)</label>
           <select name="consultor_id"><option value="">— Según el contrato del documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]), opts.consultor_id)}</select></div>
       </div>
@@ -72,7 +72,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
         <a href="/api/documentos/plantilla.xlsx">Descargar plantilla (Excel)</a></div>`
       : `<p class="mut" style="margin:0">Suba un documento del proyecto para actualizar actividades, avance, plazos de adendas o el estado de los planes. Antes de cambiar nada verá una <b>vista previa</b> y podrá elegir qué aplicar.</p>
       <div class="form">
-        <div class="campo ancho"><label>Documento (máx. 15 MB)</label><input type="file" name="archivo" accept=".xlsx,.csv,.xml,.pdf,.docx"></div>
+        <div class="campo ancho"><label>Documento (máx. 50 MB)</label><input type="file" name="archivo" accept=".xlsx,.csv,.xml,.pdf,.docx"></div>
         <div class="campo ancho"><label>Profesional (para cronogramas y documentos que no lo indiquen)</label>
           <select name="consultor_id"><option value="">— Según lo que diga el documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]))}</select></div>
       </div>
@@ -84,7 +84,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
   if (paso1.valor !== 'ok') return;
   const archivo = paso1.form.querySelector('input[type=file]').files[0];
   if (!archivo) { aviso('Seleccione un documento', 'error'); return abrirCargaDocumento(consultores, opts); }
-  if (archivo.size > MAX_BYTES) { aviso('El documento supera el máximo de 15 MB', 'error'); return abrirCargaDocumento(consultores, opts); }
+  if (archivo.size > MAX_BYTES) { aviso('El documento supera el máximo de 50 MB', 'error'); return abrirCargaDocumento(consultores, opts); }
 
   let prev;
   try { aviso('Leyendo el documento…'); prev = await revisar(archivo, Number(paso1.datos.consultor_id) || null, opts.tipo); } catch (err) { fallo(err); return abrirCargaDocumento(consultores, opts); }

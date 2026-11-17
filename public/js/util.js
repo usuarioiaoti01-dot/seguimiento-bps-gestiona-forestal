@@ -54,6 +54,7 @@ export const ETIQ = {
   ATRASADA: ['Atrasada', 'b-rojo'], SIN_INICIAR_VENCIDA: ['Sin iniciar (vencida)', 'b-rojo'], PROGRAMADA: ['Programada', 'b-gris'], EN_PLAZO: ['En plazo', 'b-verde'],
   FIRMADA: ['Firmada', 'b-verde'], ANUNCIADA: ['Anunciada', 'b-ambar'], EN_TRAMITE: ['En trámite', 'b-azul'],
   POR_REGISTRAR: ['Por registrar', 'b-ambar'], RECIBIDO: ['Recibido', 'b-azul'], OBSERVADO: ['Observado', 'b-rojo'], APROBADO: ['Aprobado', 'b-verde'],
+  EN_FORMULACION: ['En formulación', 'b-ambar'], EN_REVISION_JEFE: ['En revisión del Jefe de Proyecto', 'b-azul'], EN_REVISION_ADMIN: ['En revisión del Administrador', 'b-azul'],
   BORRADOR: ['Borrador', 'b-ambar'], RECHAZADO: ['Rechazado', 'b-rojo'],
   CONCLUIDO: ['Concluido', 'b-verde'], CUBIERTO: ['Cubierto', 'b-azul'], NO_CUBIERTO: ['No cubierto', 'b-rojo'],
   ALTA: ['Alta', 'b-rojo'], MEDIA: ['Media', 'b-ambar'], BAJA: ['Baja', 'b-gris'],
@@ -93,7 +94,7 @@ export function aviso(texto, tipo = '') {
 export const fallo = (err) => { if (!err.cancelado) aviso(err.message, 'error'); };
 
 /** Modal genérico. contenido: HTML; botones: [{texto, clase, valor}] ; devuelve promesa con {valor, form}. */
-export function modal({ titulo, contenido, botones = [{ texto: 'Cerrar', valor: null }], ancho, cerrarTexto = false }) {
+export function modal({ titulo, contenido, botones = [{ texto: 'Cerrar', valor: null }], ancho, cerrarTexto = true }) {
   return new Promise((resolver) => {
     const velo = document.createElement('div');
     velo.className = 'velo';
