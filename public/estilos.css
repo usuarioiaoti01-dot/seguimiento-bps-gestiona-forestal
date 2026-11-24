@@ -69,7 +69,7 @@ h3 { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacin
 .barra .titulo { flex: 1; min-width: 0; }
 .barra .titulo small { color: var(--texto-2); }
 .corte { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--texto-2); }
-.corte input { padding: 5px 7px; border: 1px solid var(--borde); border-radius: 7px; background: var(--superficie-2); }
+.corte input, .corte select { padding: 5px 7px; border: 1px solid var(--borde); border-radius: 7px; background: var(--superficie-2); }
 .contenido { padding: 20px 22px 60px; display: grid; gap: 18px; }
 @media (max-width: 900px) {
   .marco { grid-template-columns: 1fr; }
@@ -324,3 +324,41 @@ tr.act-sub-seg .sub-t { font-size: .95em; }
 tr.act-sub-seg .gantt .plan.sub { background: #e4efe7; border: 1px solid #8fb79c; height: 10px; }
 tr.act-sub-seg .gantt .plan.sub { top: 7px; }
 tr.act-sub-seg .gantt .plan.sub .lleno { position: absolute; inset: 0 auto 0 0; background: #3f8f5f; border-radius: 3px; }
+#proyecto { max-width: 320px; }
+
+/* Proyectos: datos de cada proyecto debajo de su fila */
+tr.proy-cab > td { border-bottom: 0; background: var(--superficie-2, #f6f8f6); }
+tr.proy-det > td { background: var(--superficie-2, #f6f8f6); padding-top: 0; padding-bottom: 14px; }
+.proy-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 18px; margin: 0; }
+.proy-datos dt { font-size: 11.5px; color: var(--texto-2); text-transform: uppercase; letter-spacing: .03em; }
+.proy-datos dd { margin: 2px 0 0; font-size: 13.5px; }
+.proy-datos .ancho { grid-column: 1 / -1; }
+
+/* Menú lateral: Proyectos > proyecto > opciones */
+.menu details > summary { list-style: none; cursor: pointer; color: #d9ebe1; padding: 8px 10px; border-radius: 8px; display: flex; gap: 9px; align-items: center; }
+.menu details > summary::-webkit-details-marker { display: none; }
+.menu details > summary:hover { background: rgba(255,255,255,.08); }
+.menu details > summary::after { content: '▸'; margin-left: auto; opacity: .7; font-size: 11px; }
+.menu details[open] > summary::after { content: '▾'; }
+.menu .grupo-menu > summary { font-weight: 600; color: #fff; }
+.menu a.sub { padding-left: 34px; font-size: 13px; }
+.menu .proy-menu { margin-left: 14px; }
+.menu .proy-menu > summary { font-size: 13px; padding: 6px 8px; }
+.menu .proy-menu > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+.menu a.sub2 { padding: 6px 8px 6px 22px; font-size: 13px; }
+span.sub { display: block; padding: 6px 34px; font-size: 12.5px; }
+
+/* Proyectos: características y profesionales */
+.cajas-car { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; margin-top: 8px; }
+.caja-car { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; cursor: pointer; background: var(--superficie); }
+.caja-car input { margin-top: 3px; }
+.caja-car small { display: block; color: var(--texto-2); font-size: 12px; font-weight: 400; }
+.caja-car:has(input:disabled) { opacity: .6; cursor: not-allowed; }
+.proy-prof { margin-top: 12px; }
+.proy-prof-t { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--texto-2); margin-bottom: 4px; }
+tbody.proy { border-top: 6px solid transparent; }
+
+/* Formular plan: elegir cómo registrar el plan */
+.opciones-plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.opcion-plan { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 14px; border: 1px dashed var(--borde-fuerte, #9fb3a6); border-radius: 10px; background: var(--superficie-2, #f6f8f6); }
+.opcion-plan span { color: var(--texto-2); font-size: 13px; }

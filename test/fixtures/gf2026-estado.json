@@ -1,0 +1,3020 @@
+[
+ {
+  "corte": "2026-08-17",
+  "indicadores": {
+   "corte": "2026-08-17",
+   "consultores": 11,
+   "vencen_15_dias": 0,
+   "planes_exceden_vigencia": 0,
+   "actividades": 99,
+   "actividades_atrasadas": 0,
+   "avance_ponderado": 0,
+   "avance_esperado": 0,
+   "dias_atraso": 0,
+   "actividades_vencidas": 0,
+   "actividades_sin_inicio": 99,
+   "planes_aprobados": 0,
+   "alertas_altas": 3,
+   "alertas_total": 25
+  },
+  "consultores": [
+   {
+    "clave": "PBQ",
+    "contrato": "033-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 1,
+      "contrato_id": 1,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 033-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 1,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-09",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2026-12-31",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 9
+   },
+   {
+    "clave": "ASL",
+    "contrato": "034-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 2,
+      "contrato_id": 2,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 034-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "GRIS"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 2,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 7
+   },
+   {
+    "clave": "EBS",
+    "contrato": "035-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 3,
+      "contrato_id": 3,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 035-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 3,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-16",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2026-12-31",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 8
+   },
+   {
+    "clave": "ERB",
+    "contrato": "039-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 4,
+      "contrato_id": 4,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 039-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 5,
+      "contrato_id": 4,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": 88,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 48,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 4,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-11-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 5
+   },
+   {
+    "clave": "EVE",
+    "contrato": "040-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 6,
+      "contrato_id": 5,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 040-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 7,
+      "contrato_id": 5,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": 88,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 48,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 5,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-11-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 6
+   },
+   {
+    "clave": "APA",
+    "contrato": "038-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 8,
+      "contrato_id": 6,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 038-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 9,
+      "contrato_id": 6,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": 88,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 48,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 6,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-11-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 3
+   },
+   {
+    "clave": "KAP",
+    "contrato": "057-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 10,
+      "contrato_id": 7,
+      "numero": 3,
+      "fecha_inicio": "2026-10-30",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 057-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 7,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-02",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2026-12-31",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 7
+   },
+   {
+    "clave": "CAC",
+    "contrato": "037-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 11,
+      "contrato_id": 8,
+      "numero": 3,
+      "fecha_inicio": "2026-10-14",
+      "fecha_fin": "2026-11-12",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 037-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 12,
+      "contrato_id": 8,
+      "numero": 4,
+      "fecha_inicio": "2026-11-13",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-12",
+     "dias_restantes": 87,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 49,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 8,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-14",
+     "fin_plan": "2026-11-12",
+     "fin_probable": "2026-11-12",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 6
+   },
+   {
+    "clave": "JCM",
+    "contrato": "064-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 13,
+      "contrato_id": 9,
+      "numero": 3,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 064-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": 0,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 9,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-31",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2026-12-31",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 6
+   },
+   {
+    "clave": "ELP",
+    "contrato": "101-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 14,
+      "contrato_id": 10,
+      "numero": 3,
+      "fecha_inicio": "2026-10-23",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 101-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": 1,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 10,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-23",
+     "fin_plan": "2026-12-30",
+     "fin_probable": "2026-12-30",
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 3
+   },
+   {
+    "clave": "YMF",
+    "contrato": "123-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 15,
+      "contrato_id": 11,
+      "numero": 2,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 02 al Contrato N.° 123-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 136,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "GRIS"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 11,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 2
+   }
+  ],
+  "alertas": [
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "JCM",
+    "titulo": "6 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "KAP",
+    "titulo": "2 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "PBQ",
+    "titulo": "13 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "APA",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "APA",
+    "titulo": "1 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "ASL",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ASL",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "CAC",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "CAC",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "EBS",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EBS",
+    "titulo": "4 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "ELP",
+    "titulo": "Holgura de 1 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "ERB",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ERB",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "EVE",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "CONTROL_CAMBIO_PENDIENTE",
+    "clave": "EVE",
+    "titulo": "Acta de Control de Cambios sin aprobar (9 actividades)"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EVE",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "JCM",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "JCM",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "KAP",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "KAP",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "PBQ",
+    "titulo": "Holgura de 0 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "PBQ",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "YMF",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "YMF",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   }
+  ]
+ },
+ {
+  "corte": "2026-11-24",
+  "indicadores": {
+   "corte": "2026-11-24",
+   "consultores": 11,
+   "vencen_15_dias": 0,
+   "planes_exceden_vigencia": 8,
+   "actividades": 99,
+   "actividades_atrasadas": 66,
+   "avance_ponderado": 0,
+   "avance_esperado": 64.6,
+   "dias_atraso": 1088,
+   "actividades_vencidas": 60,
+   "actividades_sin_inicio": 99,
+   "planes_aprobados": 0,
+   "alertas_altas": 19,
+   "alertas_total": 47
+  },
+  "consultores": [
+   {
+    "clave": "PBQ",
+    "contrato": "033-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 1,
+      "contrato_id": 1,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 033-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": -15,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 1,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-09",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-01-15",
+     "avance_ponderado": 0,
+     "avance_esperado": 32.81,
+     "spi": 0
+    },
+    "lb": 9
+   },
+   {
+    "clave": "ASL",
+    "contrato": "034-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 2,
+      "contrato_id": 2,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 034-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "GRIS"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 2,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 7
+   },
+   {
+    "clave": "EBS",
+    "contrato": "035-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 3,
+      "contrato_id": 3,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 035-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": -8,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 3,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-16",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-01-08",
+     "avance_ponderado": 0,
+     "avance_esperado": 20.45,
+     "spi": 0
+    },
+    "lb": 8
+   },
+   {
+    "clave": "ERB",
+    "contrato": "039-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 4,
+      "contrato_id": 4,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 039-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 5,
+      "contrato_id": 4,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -11,
+     "holgura_dias": -40,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 8,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 4,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-12-23",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 5
+   },
+   {
+    "clave": "EVE",
+    "contrato": "040-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 6,
+      "contrato_id": 5,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 040-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 7,
+      "contrato_id": 5,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -11,
+     "holgura_dias": -40,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 8,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 5,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-12-23",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "APA",
+    "contrato": "038-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 8,
+      "contrato_id": 6,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 038-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 9,
+      "contrato_id": 6,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -11,
+     "holgura_dias": -40,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 8,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 6,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2026-12-23",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 3
+   },
+   {
+    "clave": "KAP",
+    "contrato": "057-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 10,
+      "contrato_id": 7,
+      "numero": 3,
+      "fecha_inicio": "2026-10-30",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 057-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": -22,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 7,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-02",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-01-22",
+     "avance_ponderado": 0,
+     "avance_esperado": 38.89,
+     "spi": 0
+    },
+    "lb": 7
+   },
+   {
+    "clave": "CAC",
+    "contrato": "037-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 11,
+      "contrato_id": 8,
+      "numero": 3,
+      "fecha_inicio": "2026-10-14",
+      "fecha_fin": "2026-11-12",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 037-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 12,
+      "contrato_id": 8,
+      "numero": 4,
+      "fecha_inicio": "2026-11-13",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-12",
+     "dias_restantes": -12,
+     "holgura_dias": -41,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": 8,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 8,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-14",
+     "fin_plan": "2026-11-12",
+     "fin_probable": "2026-12-23",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "JCM",
+    "contrato": "064-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 13,
+      "contrato_id": 9,
+      "numero": 3,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 064-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": -24,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 9,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-31",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-01-24",
+     "avance_ponderado": 0,
+     "avance_esperado": 39.67,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "ELP",
+    "contrato": "101-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 14,
+      "contrato_id": 10,
+      "numero": 3,
+      "fecha_inicio": "2026-10-23",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 101-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": 1,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "AMBAR"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 10,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-23",
+     "fin_plan": "2026-12-30",
+     "fin_probable": "2026-12-30",
+     "avance_ponderado": 0,
+     "avance_esperado": 72.73,
+     "spi": 0
+    },
+    "lb": 3
+   },
+   {
+    "clave": "YMF",
+    "contrato": "123-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 15,
+      "contrato_id": 11,
+      "numero": 2,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 02 al Contrato N.° 123-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": 37,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "GRIS"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 11,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 2
+   }
+  ],
+  "alertas": [
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "APA",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "APA",
+    "titulo": "Término probable excede la vigencia en 40 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "APA",
+    "titulo": "8 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "CAC",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "CAC",
+    "titulo": "Término probable excede la vigencia en 41 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "CAC",
+    "titulo": "11 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "EBS",
+    "titulo": "Término probable excede la vigencia en 8 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "ERB",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "ERB",
+    "titulo": "Término probable excede la vigencia en 40 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "ERB",
+    "titulo": "5 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "EVE",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "EVE",
+    "titulo": "Término probable excede la vigencia en 40 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "EVE",
+    "titulo": "9 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "JCM",
+    "titulo": "Término probable excede la vigencia en 24 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "JCM",
+    "titulo": "6 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "KAP",
+    "titulo": "Término probable excede la vigencia en 22 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "KAP",
+    "titulo": "2 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "PBQ",
+    "titulo": "Término probable excede la vigencia en 15 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "PBQ",
+    "titulo": "13 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "APA",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "APA",
+    "titulo": "1 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "ASL",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ASL",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "CAC",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "CAC",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "EBS",
+    "titulo": "1 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "EBS",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EBS",
+    "titulo": "4 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "HOLGURA_REDUCIDA",
+    "clave": "ELP",
+    "titulo": "Holgura de 1 días frente a la vigencia"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "ELP",
+    "titulo": "15 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "ELP",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "ERB",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ERB",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "EVE",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "CONTROL_CAMBIO_PENDIENTE",
+    "clave": "EVE",
+    "titulo": "Acta de Control de Cambios sin aprobar (9 actividades)"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EVE",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "JCM",
+    "titulo": "1 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "JCM",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "JCM",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "KAP",
+    "titulo": "4 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "KAP",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "KAP",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "PBQ",
+    "titulo": "6 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "PBQ",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "PBQ",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "YMF",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "YMF",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   }
+  ]
+ },
+ {
+  "corte": "2027-01-15",
+  "indicadores": {
+   "corte": "2027-01-15",
+   "consultores": 11,
+   "vencen_15_dias": 0,
+   "planes_exceden_vigencia": 9,
+   "actividades": 99,
+   "actividades_atrasadas": 99,
+   "avance_ponderado": 0,
+   "avance_esperado": 100,
+   "dias_atraso": 5482,
+   "actividades_vencidas": 99,
+   "actividades_sin_inicio": 99,
+   "planes_aprobados": 0,
+   "alertas_altas": 29,
+   "alertas_total": 54
+  },
+  "consultores": [
+   {
+    "clave": "PBQ",
+    "contrato": "033-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 1,
+      "contrato_id": 1,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 033-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": -67,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 1,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-09",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-03-08",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 9
+   },
+   {
+    "clave": "ASL",
+    "contrato": "034-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 2,
+      "contrato_id": 2,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 034-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 2,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 7
+   },
+   {
+    "clave": "EBS",
+    "contrato": "035-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 3,
+      "contrato_id": 3,
+      "numero": 3,
+      "fecha_inicio": "2026-11-09",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 035-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": -60,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 3,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-16",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-03-01",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 8
+   },
+   {
+    "clave": "ERB",
+    "contrato": "039-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 4,
+      "contrato_id": 4,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 039-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 5,
+      "contrato_id": 4,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -63,
+     "holgura_dias": -92,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": -44,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 4,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2027-02-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 5
+   },
+   {
+    "clave": "EVE",
+    "contrato": "040-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 6,
+      "contrato_id": 5,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 040-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 7,
+      "contrato_id": 5,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -63,
+     "holgura_dias": -92,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": -44,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 5,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2027-02-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "APA",
+    "contrato": "038-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 8,
+      "contrato_id": 6,
+      "numero": 3,
+      "fecha_inicio": "2026-10-15",
+      "fecha_fin": "2026-11-13",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 038-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 9,
+      "contrato_id": 6,
+      "numero": 4,
+      "fecha_inicio": "2026-11-14",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-13",
+     "dias_restantes": -63,
+     "holgura_dias": -92,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": -44,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 6,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-15",
+     "fin_plan": "2026-11-13",
+     "fin_probable": "2027-02-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 3
+   },
+   {
+    "clave": "KAP",
+    "contrato": "057-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 10,
+      "contrato_id": 7,
+      "numero": 3,
+      "fecha_inicio": "2026-10-30",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 057-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": -74,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 7,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-11-02",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-03-15",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 7
+   },
+   {
+    "clave": "CAC",
+    "contrato": "037-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 11,
+      "contrato_id": 8,
+      "numero": 3,
+      "fecha_inicio": "2026-10-14",
+      "fecha_fin": "2026-11-12",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 037-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": {
+      "adenda_id": 12,
+      "contrato_id": 8,
+      "numero": 4,
+      "fecha_inicio": "2026-11-13",
+      "fecha_fin": "2026-12-31",
+      "estado": "ANUNCIADA",
+      "expediente": "KFW-PB20260000676",
+      "documento_ref": null,
+      "fecha_suscripcion": null,
+      "observacion": "Anunciada por BPS (M. Manrique) hasta el 31/12/2026; sin documento a la fecha de corte (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "fin_vigencia": "2026-11-12",
+     "dias_restantes": -64,
+     "holgura_dias": -93,
+     "fin_vigencia_potencial": "2026-12-31",
+     "holgura_potencial_dias": -44,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 8,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-14",
+     "fin_plan": "2026-11-12",
+     "fin_probable": "2027-02-13",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "JCM",
+    "contrato": "064-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 13,
+      "contrato_id": 9,
+      "numero": 3,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 064-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": -76,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 9,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-31",
+     "fin_plan": "2026-12-31",
+     "fin_probable": "2027-03-17",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 6
+   },
+   {
+    "clave": "ELP",
+    "contrato": "101-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 14,
+      "contrato_id": 10,
+      "numero": 3,
+      "fecha_inicio": "2026-10-23",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 03 al Contrato N.° 101-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": -15,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      },
+      {
+       "anterior": 2,
+       "siguiente": 3,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 10,
+     "estado": "RECIBIDO"
+    },
+    "pronostico": {
+     "inicio_plan": "2026-10-23",
+     "fin_plan": "2026-12-30",
+     "fin_probable": "2027-01-15",
+     "avance_ponderado": 0,
+     "avance_esperado": 100,
+     "spi": 0
+    },
+    "lb": 3
+   },
+   {
+    "clave": "YMF",
+    "contrato": "123-2026-MIDAGRI-SERFOR-PKFW",
+    "vigencia": {
+     "adenda_vigente": {
+      "adenda_id": 15,
+      "contrato_id": 11,
+      "numero": 2,
+      "fecha_inicio": "2026-10-31",
+      "fecha_fin": "2026-12-31",
+      "estado": "FIRMADA",
+      "expediente": "KFW-PB20260000686",
+      "documento_ref": "Adenda N.° 02 al Contrato N.° 123-2026",
+      "fecha_suscripcion": null,
+      "observacion": "Vigencia según Adendas 03 Consultores BPS 2026 V.03 (03/11/2026).",
+      "activo": 1,
+      "revision": 1
+     },
+     "adenda_siguiente": null,
+     "fin_vigencia": "2026-12-31",
+     "dias_restantes": -15,
+     "holgura_dias": null,
+     "fin_vigencia_potencial": null,
+     "holgura_potencial_dias": null,
+     "semaforo": "ROJO"
+    },
+    "cobertura": {
+     "tramos": [
+      {
+       "anterior": 1,
+       "siguiente": 2,
+       "tipo": "CONTINUA",
+       "dias": 0,
+       "desde": null,
+       "hasta": null
+      }
+     ],
+     "brechas": [],
+     "superposiciones": [],
+     "dias_sin_cobertura": 0,
+     "consistente": true
+    },
+    "plan": {
+     "plan_id": 11,
+     "estado": "POR_REGISTRAR"
+    },
+    "pronostico": {
+     "inicio_plan": null,
+     "fin_plan": null,
+     "fin_probable": null,
+     "avance_ponderado": 0,
+     "avance_esperado": 0,
+     "spi": null
+    },
+    "lb": 2
+   }
+  ],
+  "alertas": [
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "APA",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "APA",
+    "titulo": "Término probable excede la vigencia en 92 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "APA",
+    "titulo": "8 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "ASL",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "CAC",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "CAC",
+    "titulo": "Término probable excede la vigencia en 93 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "CAC",
+    "titulo": "11 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "EBS",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "EBS",
+    "titulo": "Término probable excede la vigencia en 60 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "EBS",
+    "titulo": "5 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "ELP",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "ELP",
+    "titulo": "Término probable excede la vigencia en 15 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "ERB",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "ERB",
+    "titulo": "Término probable excede la vigencia en 92 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "ERB",
+    "titulo": "5 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "EVE",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "EVE",
+    "titulo": "Término probable excede la vigencia en 92 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "EVE",
+    "titulo": "9 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "JCM",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "JCM",
+    "titulo": "Término probable excede la vigencia en 76 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "JCM",
+    "titulo": "6 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "KAP",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "KAP",
+    "titulo": "Término probable excede la vigencia en 74 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "KAP",
+    "titulo": "2 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "PBQ",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "PLAN_EXCEDE_VIGENCIA",
+    "clave": "PBQ",
+    "titulo": "Término probable excede la vigencia en 67 días"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "PBQ",
+    "titulo": "21 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "NUEVA_SIN_CONTROL_CAMBIO",
+    "clave": "PBQ",
+    "titulo": "13 actividad(es) fuera de línea base sin Acta de Control de Cambios"
+   },
+   {
+    "prioridad": "ALTA",
+    "codigo": "VIGENCIA_VENCIDA",
+    "clave": "YMF",
+    "titulo": "Vigencia contractual vencida"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "APA",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "APA",
+    "titulo": "1 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "ASL",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ASL",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "CAC",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "CAC",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "EBS",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EBS",
+    "titulo": "4 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "ELP",
+    "titulo": "22 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "ELP",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "ERB",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "ERB",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "EVE",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "CONTROL_CAMBIO_PENDIENTE",
+    "clave": "EVE",
+    "titulo": "Acta de Control de Cambios sin aprobar (9 actividades)"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "EVE",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "JCM",
+    "titulo": "8 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "JCM",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "JCM",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "ACTIVIDADES_VENCIDAS",
+    "clave": "KAP",
+    "titulo": "10 actividad(es) con fin planificado vencido sin concluir"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "KAP",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "KAP",
+    "titulo": "5 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "SIN_AVANCE_REGISTRADO",
+    "clave": "PBQ",
+    "titulo": "Plan sin avance registrado"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "PBQ",
+    "titulo": "3 entregable(s) de la línea base sin actividad en el plan"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "PLAN_POR_REGISTRAR",
+    "clave": "YMF",
+    "titulo": "Plan de trabajo por registrar"
+   },
+   {
+    "prioridad": "MEDIA",
+    "codigo": "LINEA_BASE_NO_CUBIERTA",
+    "clave": "YMF",
+    "titulo": "2 entregable(s) de la línea base sin actividad en el plan"
+   }
+  ]
+ }
+]

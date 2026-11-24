@@ -59,8 +59,11 @@ async function formulario(el, consultorId) {
         ${d.aprobacion ? `<tr><th>Aprobación del plan</th><td><b>Aprobado el ${ff(d.aprobacion.fecha)}</b>${d.aprobacion.dias !== null ? ` · ${d.aprobacion.dias} día(s) después de la suscripción de la adenda (${ff(d.aprobacion.suscripcion)})` : ''}</td></tr>` : ''}
       </tbody></table></div></div>
 
-    <div class="tarjeta"><div class="cab"><h2>ACTIVIDADES</h2><span class="acciones">${p && p.tiene_pdf && !esProfesional() && ['EN_REVISION_ADMIN', 'APROBADO'].includes(perm.estado) ? '<button type="button" class="btn peq" id="b-ver-pdf">Ver PDF del plan</button>' : ''}${ed && per ? '<button type="button" class="btn peq" id="b-agregar">Agregar actividad</button>' : ''}${perm.puedeAprobarJefe ? '<button type="button" class="btn peq prim" id="b-aprobar-jefe">Aprobar plan propuesto</button>' : ''}</span></div>
+    <div class="tarjeta"><div class="cab"><h2>ACTIVIDADES</h2><span class="acciones">${p && p.tiene_pdf && !esProfesional() && ['EN_REVISION_ADMIN', 'APROBADO'].includes(perm.estado) ? '<button type="button" class="btn peq" id="b-ver-pdf">Ver PDF del plan</button>' : ''}${p && p.documento_origen ? '<button type="button" class="btn peq" id="b-origen" title="Documento con el que se registró el plan">Documento de origen</button>' : ''}${ed && per ? '<button type="button" class="btn peq" id="b-importar" title="Registrar un plan ya elaborado en un documento: Excel, CSV, PDF o Word">Registrar plan desde documento</button><input type="file" id="f-plan" accept=".xlsx,.csv,.pdf,.docx" hidden><button type="button" class="btn peq" id="b-agregar">Agregar actividad</button>' : ''}${perm.puedeAprobarJefe ? '<button type="button" class="btn peq prim" id="b-aprobar-jefe">Aprobar plan propuesto</button>' : ''}</span></div>
       ${perm.estado !== 'APROBADO' ? '<div class="cuerpo" style="padding-bottom:0"><div class="alerta"><div class="t">Fechas referenciales</div><div class="d">Las fechas se calculan según los días hábiles de cada actividad, una tras otra, desde el inicio de la adenda vigente. Variarán cuando el Administrador apruebe el plan: los plazos se cuentan a partir de esa aprobación.</div></div></div>' : ''}
+      ${ed && per && !d.actividades.length ? `<div class="cuerpo"><div class="opciones-plan">
+        <div class="opcion-plan"><b>Cargar un documento con el plan</b><span>Si ya tiene el plan elaborado en Excel, CSV, PDF o Word, súbalo: se lee, se le muestra lo que se entendió y al confirmar se genera el plan en la aplicación.</span><button type="button" class="btn prim" id="o-importar">Cargar documento del plan</button></div>
+        <div class="opcion-plan"><b>Registrar las actividades una a una</b><span>Complete cada actividad con sus subactividades, su producto o evidencia y sus días hábiles; las fechas las calcula la aplicación.</span><button type="button" class="btn" id="o-agregar">Agregar actividad</button></div></div></div>` : ''}
       <div class="cuerpo sin tabla-env"><table>
         <thead><tr><th></th><th>N.°</th><th style="min-width:300px">Actividad</th><th style="min-width:220px">Producto / evidencia verificable</th><th>Documentos</th><th>Inicio</th><th>Fin</th><th class="d">Días háb.</th><th></th></tr></thead>
         ${d.actividades.map((a) => `<tbody class="grupo${a.agregada_por ? ' de-jefe' : ''}" data-id="${a.actividad_id}"><tr class="act-cab"><td>${subDe(a).length ? '<button type="button" class="btn peq desplegar" data-desplegar aria-expanded="true" title="Mostrar u ocultar las subactividades">▾</button>' : ''}</td><td class="num"><b>${esc(a.numero)}</b></td>
@@ -182,10 +185,53 @@ async function formulario(el, consultorId) {
     } catch (err) { fallo(err); await recargar(); }
   };
 
+  /** Plan ya elaborado en un documento: se lee, se muestra lo que se entendió y, al confirmar, se crean las actividades. */
+  async function importarPlan(archivo) {
+    if (archivo.size > 50 * 1024 * 1024) { aviso('El documento supera el máximo de 50 MB', 'error'); return; }
+    aviso('Leyendo el documento…');
+    let vista;
+    try {
+      const r = await fetch(`/api/formulacion/${consultorId}/plan-documento/previsualizar`, { method: 'POST', credentials: 'same-origin', body: archivo, headers: { 'Content-Type': 'application/octet-stream', 'X-SGF': '1', 'X-Nombre': encodeURIComponent(archivo.name) } });
+      vista = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(vista.error || `Error ${r.status}`);
+    } catch (err) { fallo(err); return; }
+    const r = vista.resumen;
+    const filas = vista.plan.actividades.map((a, i) => `<div class="tarjeta" style="margin-bottom:8px"><div class="cuerpo" style="padding:10px 12px">
+      <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="a_${i}" ${a.valida ? 'checked' : 'disabled'}>
+        <span style="flex:1"><b>${i + 1}. ${esc(a.descripcion)}</b> <span class="mut2">· ${a.dias ?? '—'} días hábiles</span>
+        ${a.producto ? `<br><span class="mut2">Producto: ${esc(a.producto)}</span>` : ''}
+        ${a.subactividades.map((s, k) => `<br><span class="mut2">${i + 1}.${k + 1} ${esc(s.texto)} · ${s.dias ?? '—'} d${s.producto ? ` · ${esc(s.producto)}` : ''}</span>`).join('')}
+        ${a.valida ? '' : `<br><span style="color:var(--rojo)">✖ No se puede incorporar: ${esc(a.error)}</span>`}
+        ${(a.advertencias || []).map((w) => `<br><span style="color:var(--ambar)">▲ ${esc(w)}</span>`).join('')}</span></label></div></div>`).join('');
+    const res = await modal({
+      titulo: 'Plan registrado desde documento', ancho: 860,
+      contenido: `<p class="mut" style="margin:0 0 8px">«${esc(vista.archivo)}»: se entendieron ${r.actividades} actividad${r.actividades === 1 ? '' : 'es'} (${r.validas} lista${r.validas === 1 ? '' : 's'} para incorporar, ${r.dias_total} días hábiles de ${r.dias_periodo ?? '—'} del periodo). Las fechas las calcula la aplicación con los días hábiles; las del documento no se copian. Revise y confirme: nada se guardó todavía.${vista.existentes ? ` El plan ya tiene ${vista.existentes} actividad(es): las nuevas se agregan a continuación.` : ''}</p>
+        <div style="max-height:56vh;overflow:auto">${filas}</div>`,
+      botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Incorporar al plan', clase: 'prim', valor: 'ok' }],
+    });
+    if (res.valor !== 'ok') return;
+    const indices = vista.plan.actividades.map((_, i) => i).filter((i) => res.datos[`a_${i}`] === 1);
+    if (!indices.length) { aviso('No seleccionó ninguna actividad', 'error'); return; }
+    try {
+      const x = await api('POST', `/formulacion/${consultorId}/plan-documento/aplicar`, { importacion_id: vista.importacion_id, indices });
+      if (x.fallidas.length) {
+        await modal({ titulo: 'Actividades que no se pudieron incorporar', ancho: 700, botones: [{ texto: 'Aceptar', clase: 'prim', valor: true }],
+          contenido: `<p class="mut" style="margin:0 0 8px">Se incorporaron ${x.creadas.length}. Estas no:</p>${x.fallidas.map((f) => `<div class="alerta"><div class="t">${esc(f.descripcion)}</div><div class="d">${esc(f.motivo)}</div></div>`).join('')}` });
+      } else aviso(`Se incorporaron ${x.creadas.length} actividades al plan`, 'exito');
+      await recargar();
+    } catch (err) { fallo(err); }
+  }
+
   function conectar() {
     const on = (sel, fn) => { const b = el.querySelector(sel); if (b) b.onclick = fn; };
     el.querySelectorAll('[name=supuestos]').forEach((c) => { if (!c.disabled) autoguardar(c); });
     on('#b-agregar', () => pedirActividad(null));
+    on('#b-importar', () => el.querySelector('#f-plan').click());
+    on('#o-importar', () => el.querySelector('#f-plan').click());
+    on('#o-agregar', () => pedirActividad(null));
+    const fp = el.querySelector('#f-plan');
+    if (fp) fp.onchange = () => { const arch = fp.files[0]; fp.value = ''; if (arch) importarPlan(arch); };
+    on('#b-origen', () => { window.open(`/api/formulacion/${consultorId}/plan-documento`, '_blank', 'noopener'); });
     on('#b-pdf', async () => {
       try {
         const r = await api('POST', `/formulacion/${consultorId}/pdf`, {});

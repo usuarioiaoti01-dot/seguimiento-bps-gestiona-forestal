@@ -10,6 +10,7 @@ const fs = require('fs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-proxy-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
+process.env.DOCUMENTOS_RAIZ = path.join(tmp, 'almacen');
 process.env.ADMIN_CORREO = 'admin.proxy@serfor.gob.pe';
 process.env.ADMIN_CLAVE_INICIAL = 'ClaveProxy2026';
 process.env.ANTHROPIC_API_KEY = '';

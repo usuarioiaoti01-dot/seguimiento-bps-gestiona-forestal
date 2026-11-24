@@ -18,6 +18,16 @@ const ESTADOS_CC = ['BORRADOR', 'APROBADO', 'RECHAZADO'];
 const error = (estado, mensaje, extra = {}) => Object.assign(new Error(mensaje), { estado, ...extra });
 const esFecha = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
 
+/** Características que elige quien registra el proyecto (db/13). */
+const BANDERAS_PROYECTO = ['con_profesionales', 'con_adendas', 'con_linea_base', 'con_orden_servicio', 'con_tdr'];
+const BANDERAS_DEFECTO = { con_profesionales: 1, con_adendas: 1, con_linea_base: 1, con_orden_servicio: 0, con_tdr: 0 };
+
+/** Áreas que la Dirección OTI puede designar para la gestión de un proyecto (la Dirección OTI es quien lo crea). */
+const AREAS_TECNICAS = ['Equipo de Desarrollo', 'Equipo de Infraestructura', 'Seguridad de la Información', 'Equipo de Base de Datos'];
+
+/** Jefes de proyecto que la Dirección OTI puede designar. */
+const JEFES_PROYECTO = ['Alex Tantachuco', 'Iván Rengifo', 'Martín Chocce', 'José Carlos Gallardo'];
+
 function validarFechas(obj, campos) {
   for (const c of campos) {
     if (obj[c] === undefined || obj[c] === null) continue;
@@ -45,9 +55,9 @@ function crearServicio(repo) {
     return esFecha(p) ? p : hoyLima();
   }
 
-  async function estado({ corte } = {}) {
+  async function estado({ corte, proyecto_id } = {}) {
     const d = await datos();
-    return construirEstado(d, { corte: esFecha(corte) ? corte : await corteVigente() });
+    return construirEstado(d, { corte: esFecha(corte) ? corte : await corteVigente(), proyecto_id: proyecto_id ? Number(proyecto_id) : null });
   }
 
   async function recalcularYGuardar(usuario, motivo) {
@@ -322,6 +332,21 @@ function crearServicio(repo) {
       const m = { ...previa, ...f };
       if (m.estado && !ESTADOS_CC.includes(m.estado)) throw error(400, 'Estado de control de cambios no válido');
     },
+    proyecto: (f, previa = {}) => {
+      validarFechas(f, ['fecha_inicio', 'fecha_fin']);
+      const m = { ...previa, ...f };
+      delete f.codigo; // el código lo genera el sistema y nadie lo modifica
+      for (const k of BANDERAS_PROYECTO) if (k in f) f[k] = f[k] ? 1 : 0;
+      const b = { ...previa, ...f };
+      if (b.con_profesionales === 0) Object.assign(f, { con_adendas: 0, con_linea_base: 0, con_orden_servicio: 0, con_tdr: 0 }); // sin profesionales no hay contratos, adendas, línea base ni documentos del personal
+      if ('nombre' in f) { f.nombre = String(f.nombre || '').trim(); if (f.nombre.length < 5 || f.nombre.length > 300) throw error(400, 'El nombre del proyecto lleva de 5 a 300 caracteres'); }
+      if (m.fecha_inicio && m.fecha_fin && String(m.fecha_fin) < String(m.fecha_inicio)) throw error(400, 'El fin del proyecto no puede ser anterior a su inicio');
+      if (f.estado && !['ACTIVO', 'CERRADO'].includes(f.estado)) throw error(400, 'Estado de proyecto no válido');
+      if (f.area_tecnica && !AREAS_TECNICAS.includes(f.area_tecnica) && f.area_tecnica !== previa.area_tecnica) throw error(400, `La gestión del proyecto debe ser una de: ${AREAS_TECNICAS.join(', ')}`);
+      if (f.jefe_proyecto && !JEFES_PROYECTO.includes(f.jefe_proyecto) && f.jefe_proyecto !== previa.jefe_proyecto) throw error(400, `El jefe de proyecto debe ser uno de: ${JEFES_PROYECTO.join(', ')}`);
+      for (const k of ['financiador', 'jefe_proyecto']) if (f[k] && String(f[k]).length > 300) throw error(400, `El campo ${k} es demasiado largo`);
+      if (f.descripcion && String(f.descripcion).length > 1000) throw error(400, 'La descripción supera los 1000 caracteres');
+    },
     linea_base_entregable: (f) => validarFechas(f, ['inicio_lb', 'fin_lb', 'fecha_corte_lb']),
     contrato: (f) => validarFechas(f, ['fecha_inicio']),
     consultor: () => {},
@@ -336,10 +361,95 @@ function crearServicio(repo) {
     const f = filtrarColumnas(entidad, entrada);
     if (entidad === 'consultor' && ctx.rol !== 'ADMIN') for (const k of meta.personales) delete f[k];
     VALIDADORES[entidad](f, previa);
-    const consultor_id = entidad === 'consultor' ? Number(id) : previa.consultor_id ?? consultorDe(d, { contrato_id: previa.contrato_id });
+    if (entidad === 'proyecto' && ['con_profesionales', 'con_adendas', 'con_linea_base'].some((k) => k in f && Number(f[k]) !== Number(previa[k])) && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0)) throw error(409, 'Con profesionales ya registrados no se puede cambiar si el proyecto tiene profesionales, adendas o línea base');
+    if (entidad === 'proyecto' && f.estado === 'CERRADO' && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0 && c.estado === 'ACTIVO')) throw error(409, 'No se puede cerrar el proyecto mientras tenga profesionales ACTIVOS: cambie su estado a CULMINADO o NO_RENOVADO');
+    const consultor_id = entidad === 'proyecto' ? null : entidad === 'consultor' ? Number(id) : previa.consultor_id ?? consultorDe(d, { contrato_id: previa.contrato_id });
     const r = await repo.actualizar(entidad, id, f, { revision: entrada.revision, usuario: ctx.usuario, motivo: ctx.motivo, origen: ctx.origen, consultor_id });
     await recalcularYGuardar(ctx.usuario, `Cambio en ${entidad} ${id}`);
     return r;
+  }
+
+  /**
+   * Registra un profesional en un proyecto: consultor + contrato y, si se indica, su primera adenda.
+   * Se valida todo antes de escribir; luego se recalcula una sola vez.
+   */
+  async function registrarProfesional(entrada, ctx) {
+    const d = await datos(true);
+    const e = entrada || {};
+    const proy = d.proyectos.find((p) => p.proyecto_id === Number(e.proyecto_id) && p.activo !== 0);
+    if (!proy) throw error(400, 'Seleccione el proyecto');
+    if (proy.estado === 'CERRADO') throw error(409, 'El proyecto está cerrado: no admite nuevos profesionales');
+    if (proy.con_profesionales === 0) throw error(409, 'Este proyecto se registró sin profesionales');
+    const porOS = proy.con_orden_servicio === 1;
+    const doc = porOS ? 'Orden de Servicio' : 'contrato';
+    const clave = String(e.clave || '').trim().toUpperCase();
+    if (!/^[A-Z]{2,5}$/.test(clave)) throw error(400, 'La clave del profesional lleva de 2 a 5 letras (p. ej. iniciales)');
+    if (d.consultores.some((c) => c.clave === clave)) throw error(409, `Ya existe un profesional con la clave ${clave}`);
+    const nombres = String(e.nombres || '').trim();
+    if (nombres.length < 5 || nombres.length > 150) throw error(400, 'Los nombres y apellidos llevan de 5 a 150 caracteres');
+    const numero = String(e.contrato_numero || '').trim();
+    if (!numero || numero.length > 60) throw error(400, `El número de ${doc} es obligatorio (hasta 60 caracteres)`);
+    if (d.contratos.some((k) => String(k.numero).toLowerCase() === numero.toLowerCase())) throw error(409, `Ya existe ${porOS ? 'la Orden de Servicio' : 'el contrato'} ${numero}`);
+    const cons = filtrarColumnas('consultor', { clave, nombres, perfil: e.perfil, recurso_cronograma: e.recurso_cronograma, sede: e.sede, correo_institucional: e.correo_institucional, observacion: e.observacion });
+    if (ctx.rol === 'ADMIN') Object.assign(cons, filtrarColumnas('consultor', { dni: e.dni, telefono: e.telefono, correo_personal: e.correo_personal }));
+    Object.assign(cons, { proyecto_id: proy.proyecto_id, proyecto: String(proy.nombre).slice(0, 100), estado: 'ACTIVO' });
+    const k = filtrarColumnas('contrato', { numero, tipo_documento: porOS ? 'ORDEN_SERVICIO' : 'CONTRATO', titulo_tdr: e.titulo_tdr || e.perfil, servicio: e.servicio || e.perfil, fecha_inicio: e.contrato_inicio, expediente: e.expediente });
+    validarFechas(k, ['fecha_inicio']);
+    let ad = null;
+    if (porOS && !(e.adenda_inicio && (e.adenda_fin || e.adenda_plazo_dias))) throw error(400, 'La Orden de Servicio requiere su inicio y su plazo (en días) o su fin: de ahí se controla su vencimiento');
+    if (e.adenda_inicio || e.adenda_fin || e.adenda_plazo_dias) {
+      ad = filtrarColumnas('adenda', { numero: e.adenda_numero || 1, fecha_inicio: e.adenda_inicio, fecha_fin: e.adenda_fin, plazo_dias: e.adenda_plazo_dias, estado: e.adenda_estado || 'FIRMADA', expediente: e.expediente, documento_ref: e.adenda_documento || `${porOS ? 'Orden de Servicio' : 'Contrato'} N.° ${numero}`, fecha_suscripcion: e.adenda_suscripcion });
+      if (!ad.fecha_fin && ad.fecha_inicio && ad.plazo_dias) ad.fecha_fin = diaAFecha(aDia(ad.fecha_inicio) + Number(ad.plazo_dias) - 1);
+      if (!ad.fecha_inicio || !ad.fecha_fin) throw error(400, 'La adenda lleva inicio y fin (o inicio y plazo en días)');
+      VALIDADORES.adenda(ad);
+    }
+    const base = { usuario: ctx.usuario, motivo: ctx.motivo || `Alta del profesional ${clave} en el proyecto ${proy.codigo}`, origen: ctx.origen };
+    // consultor + contrato + primera adenda en UNA transacción: si algo falla, no queda un profesional a medias (C4)
+    const { c, contrato, adenda } = await repo.transaccion(async (t) => {
+      const nuevo = await t.crear('consultor', cons, { ...base, consultor_id: null });
+      const kk = await t.crear('contrato', { ...k, consultor_id: nuevo.consultor_id }, { ...base, consultor_id: nuevo.consultor_id });
+      const aa = ad ? await t.crear('adenda', { ...ad, contrato_id: kk.contrato_id }, { ...base, consultor_id: nuevo.consultor_id }) : null;
+      return { c: nuevo, contrato: kk, adenda: aa };
+    });
+    await recalcularYGuardar(ctx.usuario, `Alta del profesional ${clave}`);
+    return { consultor: c, contrato, adenda };
+  }
+
+  /**
+   * Renueva o amplía una Orden de Servicio (proyectos sin adendas): registra el nuevo periodo, que empieza
+   * al día siguiente del fin vigente (o en la fecha indicada) y mueve el vencimiento que se controla.
+   */
+  async function ampliarOrdenServicio(consultor_id, entrada, ctx) {
+    const d = await datos(true);
+    const c = d.consultores.find((x) => x.consultor_id === Number(consultor_id) && x.activo !== 0);
+    if (!c) throw error(404, 'Profesional no encontrado');
+    const proy = d.proyectos.find((p) => p.proyecto_id === c.proyecto_id);
+    if (proy && proy.con_adendas === 1) throw error(409, 'Este proyecto maneja adendas: registre una adenda en Contratos y adendas');
+    const k = d.contratos.find((x) => x.consultor_id === c.consultor_id && x.activo !== 0);
+    if (!k) throw error(409, 'El profesional no tiene Orden de Servicio registrada');
+    const e = entrada || {};
+    const previas = d.adendas.filter((a) => a.contrato_id === k.contrato_id && a.activo !== 0 && a.estado !== 'ANULADA');
+    const ultimoFin = previas.reduce((m, a) => (a.fecha_fin > m ? a.fecha_fin : m), '');
+    const inicio = e.inicio || (ultimoFin ? diaAFecha(aDia(ultimoFin) + 1) : '');
+    if (!inicio) throw error(400, 'Indique el inicio del nuevo periodo');
+    validarFechas({ inicio, fin: e.fin }, ['inicio', 'fin']);
+    if (ultimoFin && inicio <= ultimoFin) throw error(400, `El nuevo periodo debe iniciar después del fin vigente (${ultimoFin.split('-').reverse().join('/')})`);
+    let fin = e.fin;
+    if (!fin && e.plazo_dias) fin = diaAFecha(aDia(inicio) + Number(e.plazo_dias) - 1);
+    if (!fin) throw error(400, 'Indique el fin del nuevo periodo o su plazo en días');
+    const numeroOS = String(e.os_numero || '').trim();
+    const ad = filtrarColumnas('adenda', { contrato_id: k.contrato_id, numero: Math.max(0, ...previas.map((a) => Number(a.numero))) + 1, fecha_inicio: inicio, fecha_fin: fin, plazo_dias: e.plazo_dias, estado: 'FIRMADA', expediente: k.expediente, documento_ref: numeroOS ? `Orden de Servicio N.° ${numeroOS}` : `Ampliación de la Orden de Servicio N.° ${k.numero}` });
+    VALIDADORES.adenda(ad);
+    const r = await repo.crear('adenda', ad, { usuario: ctx.usuario, motivo: ctx.motivo || `Renovación de la Orden de Servicio de ${c.clave}`, origen: ctx.origen, consultor_id: c.consultor_id });
+    await recalcularYGuardar(ctx.usuario, `Renovación de la Orden de Servicio de ${c.clave}`);
+    return r;
+  }
+
+  /** Código del proyecto: PRY-AAAA-NNN, correlativo dentro del año (nunca se reutiliza ni se edita). */
+  function codigoProyectoNuevo(d) {
+    const anio = hoyLima().slice(0, 4);
+    const usados = d.proyectos.map((p) => /^PRY-(\d{4})-(\d{3,})$/.exec(String(p.codigo))).filter((m) => m && m[1] === anio).map((m) => Number(m[2]));
+    return `PRY-${anio}-${String(Math.max(0, ...usados) + 1).padStart(3, '0')}`;
   }
 
   async function crearEntidad(entidad, entrada, ctx) {
@@ -357,6 +467,13 @@ function crearServicio(repo) {
       if (d.adendas.some((a) => a.contrato_id === k.contrato_id && Number(a.numero) === Number(f.numero))) throw error(409, `La Adenda N.° ${f.numero} ya existe para este contrato`);
       if (!f.fecha_inicio || !f.fecha_fin) throw error(400, 'Inicio y fin de la adenda son obligatorios');
     }
+    if (entidad === 'proyecto') {
+      if (!f.nombre) throw error(400, 'El nombre del proyecto es obligatorio');
+      f.codigo = codigoProyectoNuevo(d); // lo asigna el sistema: único, correlativo por año y no editable
+      for (const [k, v] of Object.entries(BANDERAS_DEFECTO)) if (f[k] === undefined) f[k] = v;
+      if (f.con_profesionales === 0) Object.assign(f, { con_adendas: 0, con_linea_base: 0, con_orden_servicio: 0, con_tdr: 0 });
+      f.estado = f.estado || 'ACTIVO';
+    }
     if (entidad === 'plan_trabajo') {
       if (!f.consultor_id || !f.nombre) throw error(400, 'Consultor y nombre del plan son obligatorios');
       f.estado = f.estado || 'POR_REGISTRAR';
@@ -366,9 +483,76 @@ function crearServicio(repo) {
       if (!f.consultor_id || !f.titulo) throw error(400, 'Consultor y título son obligatorios');
       f.estado = f.estado || 'BORRADOR';
     }
-    const consultor_id = f.consultor_id ?? consultorDe(d, { contrato_id: f.contrato_id });
+    const consultor_id = entidad === 'proyecto' ? null : f.consultor_id ?? consultorDe(d, { contrato_id: f.contrato_id });
     const r = await repo.crear(entidad, f, { usuario: ctx.usuario, motivo: ctx.motivo, origen: ctx.origen, consultor_id });
     await recalcularYGuardar(ctx.usuario, `Nuevo registro en ${entidad}`);
+    return r;
+  }
+
+  // ---------------------------------------------------------------- equipo de cada proyecto (db/15)
+  // El Equipo de Desarrollo usa el perfil JEFE_PROYECTO (D1); cada proyecto tiene uno o más miembros y a lo más
+  // un responsable. Solo el Administrador define los equipos (la ruta lo exige y permisos.js lo vuelve a impedir).
+  async function proyectoVivo(d, proyecto_id) {
+    const p = d.proyectos.find((x) => x.proyecto_id === Number(proyecto_id) && x.activo !== 0);
+    if (!p) throw error(404, 'Proyecto no encontrado');
+    return p;
+  }
+
+  /** Miembros activos del proyecto con el nombre y el correo de su cuenta. */
+  async function equipoDe(proyecto_id) {
+    const d = await datos();
+    const usuarios = new Map((await repo.listarUsuarios()).map((u) => [u.usuario_id, u]));
+    return (d.miembros || []).filter((m) => m.proyecto_id === Number(proyecto_id) && m.activo !== 0)
+      .map((m) => { const u = usuarios.get(m.usuario_id) || {}; return { miembro_id: m.miembro_id, proyecto_id: m.proyecto_id, usuario_id: m.usuario_id, es_responsable: m.es_responsable ? 1 : 0, desde: m.desde, revision: m.revision, nombre: u.nombre || '(cuenta no encontrada)', correo: u.correo || null, rol: u.rol || null, cuenta_activa: u.activo ? 1 : 0 }; })
+      .sort((a, b) => b.es_responsable - a.es_responsable || String(a.nombre).localeCompare(String(b.nombre)));
+  }
+
+  /** Deja a `miembro_id` como único responsable del proyecto (en la transacción `t`). */
+  async function fijarResponsable(t, d, proyecto, miembro_id, ctx) {
+    for (const m of (d.miembros || []).filter((x) => x.proyecto_id === proyecto.proyecto_id && x.activo !== 0 && x.es_responsable && x.miembro_id !== miembro_id)) {
+      await t.actualizar('proyecto_miembro', m.miembro_id, { es_responsable: 0 }, { usuario: ctx.usuario, motivo: `Cambio de responsable del proyecto ${proyecto.codigo}`, origen: ctx.origen });
+    }
+  }
+
+  async function agregarMiembro(proyecto_id, entrada, ctx) {
+    const d = await datos(true);
+    const proyecto = await proyectoVivo(d, proyecto_id);
+    const u = await repo.buscarUsuarioId(Number((entrada || {}).usuario_id));
+    if (!u) throw error(400, 'Seleccione la cuenta del Jefe de Proyecto');
+    if (!u.activo) throw error(409, 'La cuenta está desactivada');
+    if (u.rol !== 'JEFE_PROYECTO') throw error(400, 'Solo las cuentas con perfil Jefe de Proyecto forman el equipo de un proyecto (el Administrador ya escribe en todos)');
+    if ((d.miembros || []).some((m) => m.proyecto_id === proyecto.proyecto_id && m.usuario_id === u.usuario_id && m.activo !== 0)) throw error(409, `${u.nombre} ya es parte del equipo de ${proyecto.codigo}`);
+    const responsable = (entrada || {}).es_responsable ? 1 : 0;
+    const r = await repo.transaccion(async (t) => {
+      if (responsable) await fijarResponsable(t, d, proyecto, null, ctx);
+      return t.crear('proyecto_miembro', { proyecto_id: proyecto.proyecto_id, usuario_id: u.usuario_id, es_responsable: responsable, desde: hoyLima() }, { usuario: ctx.usuario, motivo: ctx.motivo || `${u.nombre} se integra al equipo del proyecto ${proyecto.codigo}${responsable ? ' como responsable' : ''}`, origen: ctx.origen });
+    });
+    invalidar();
+    return r;
+  }
+
+  async function actualizarMiembro(proyecto_id, miembro_id, entrada, ctx) {
+    const d = await datos(true);
+    const proyecto = await proyectoVivo(d, proyecto_id);
+    const m = (d.miembros || []).find((x) => x.miembro_id === Number(miembro_id) && x.proyecto_id === proyecto.proyecto_id && x.activo !== 0);
+    if (!m) throw error(404, 'Miembro del equipo no encontrado');
+    const responsable = (entrada || {}).es_responsable ? 1 : 0;
+    const r = await repo.transaccion(async (t) => {
+      if (responsable) await fijarResponsable(t, d, proyecto, m.miembro_id, ctx);
+      return t.actualizar('proyecto_miembro', m.miembro_id, { es_responsable: responsable }, { revision: (entrada || {}).revision, usuario: ctx.usuario, motivo: ctx.motivo || (responsable ? `Nuevo responsable del proyecto ${proyecto.codigo}` : `Deja de ser responsable del proyecto ${proyecto.codigo}`), origen: ctx.origen });
+    });
+    invalidar();
+    return r;
+  }
+
+  /** Baja lógica del miembro (nada se borra). */
+  async function quitarMiembro(proyecto_id, miembro_id, ctx) {
+    const d = await datos(true);
+    const proyecto = await proyectoVivo(d, proyecto_id);
+    const m = (d.miembros || []).find((x) => x.miembro_id === Number(miembro_id) && x.proyecto_id === proyecto.proyecto_id && x.activo !== 0);
+    if (!m) throw error(404, 'Miembro del equipo no encontrado');
+    const r = await repo.actualizar('proyecto_miembro', m.miembro_id, { activo: 0, es_responsable: 0, hasta: hoyLima() }, { revision: ctx.revision, usuario: ctx.usuario, motivo: ctx.motivo || `Sale del equipo del proyecto ${proyecto.codigo}`, origen: ctx.origen, accion: 'ANULAR' });
+    invalidar();
     return r;
   }
 
@@ -426,9 +610,10 @@ function crearServicio(repo) {
     };
   }
 
-  async function lineaBase() {
+  async function lineaBase({ proyecto_id } = {}) {
     const d = await datos();
-    return d.linea_base.map((lb) => {
+    const deProyecto = (lb) => { if (!proyecto_id) return true; const c = d.consultores.find((x) => x.consultor_id === lb.consultor_id); return !!c && c.proyecto_id === Number(proyecto_id); };
+    return d.linea_base.filter(deProyecto).map((lb) => {
       const c = d.consultores.find((x) => x.consultor_id === lb.consultor_id);
       return { ...lb, clave: c && c.clave, nombres: c && c.nombres, cobertura: coberturaLineaBase(lb, d), actividades: d.actividades.filter((a) => a.entregable_id === lb.entregable_id && a.estado !== 'ANULADA').map((a) => ({ actividad_id: a.actividad_id, numero: a.numero, clave: c && c.clave })) };
     });
@@ -461,8 +646,9 @@ function crearServicio(repo) {
 
   return {
     repo, datos, invalidar, estado, corteVigente, recalcularYGuardar, recalculoDiario,
-    actualizarActividad, actualizarSubactividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico, revisarPlan,
+    AREAS_TECNICAS, JEFES_PROYECTO, registrarProfesional, ampliarOrdenServicio, actualizarActividad, actualizarSubactividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico, revisarPlan,
     actualizarEntidad, crearEntidad, detalleConsultor, lineaBase, sanearBitacora,
+    equipoDe, agregarMiembro, actualizarMiembro, quitarMiembro,
     consolidarActividad, aDia,
   };
 }

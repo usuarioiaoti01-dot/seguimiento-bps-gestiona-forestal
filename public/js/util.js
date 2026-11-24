@@ -1,8 +1,12 @@
 // Utilidades de interfaz: API, formato, avisos, modales y markdown seguro.
 
-export const estado = { usuario: null, ia: false, modo: '', corte: '' };
+export const estado = { usuario: null, ia: false, modo: '', corte: '', proyecto_id: null, proyectos: [] };
+try { const g = Number(localStorage.getItem('sgf_proyecto')); if (g) estado.proyecto_id = g; } catch { /* sin almacenamiento */ }
+// Las consultas por profesional de estas rutas se acotan al proyecto elegido en el encabezado
+const FILTRADAS = /^\/(estado|adendas|linea-base)(\?|$)/;
 
 export async function api(metodo, ruta, cuerpo) {
+  if (metodo === 'GET' && estado.proyecto_id && FILTRADAS.test(ruta) && !/proyecto_id=/.test(ruta)) ruta += `${ruta.includes('?') ? '&' : '?'}proyecto_id=${estado.proyecto_id}`;
   const r = await fetch(`/api${ruta}`, {
     method: metodo,
     headers: { 'Content-Type': 'application/json', 'X-SGF': '1' },
@@ -173,3 +177,5 @@ export const ICONOS = {
   ia: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>',
   logo: '<svg width="34" height="34" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="rgba(255,255,255,.14)"/><path d="M16 5l7 10h-4l5 7h-5v5h-6v-5H8l5-7H9z" fill="#e8f3ec"/></svg>',
 };
+
+export const puedeProyecto = (id = estado.proyecto_id) => estado.usuario?.rol === 'ADMIN' || (estado.usuario?.rol === 'JEFE_PROYECTO' && estado.proyectos.some(p => p.proyecto_id === Number(id) && p.escribe));

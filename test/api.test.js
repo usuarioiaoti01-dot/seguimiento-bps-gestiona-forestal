@@ -8,7 +8,10 @@ const fs = require('fs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
+process.env.DOCUMENTOS_RAIZ = path.join(tmp, 'almacen');
 process.env.PLANES_PDF_DIR = path.join(tmp, 'planes-pdf');
+process.env.CONTRATOS_PDF_DIR = path.join(tmp, 'contratos-pdf');
+process.env.PLANES_ORIGEN_DIR = path.join(tmp, 'planes-origen');
 process.env.ADENDAS_PDF_DIR = path.join(tmp, 'adendas-pdf');
 process.env.ADMIN_CORREO = 'admin.prueba@serfor.gob.pe';
 process.env.ADMIN_CLAVE_INICIAL = 'ClavePrueba2026';
@@ -127,6 +130,8 @@ test('bitácora: los datos personales solo los ve el ADMIN', async () => {
 
   const nu = await llamar('POST', '/api/usuarios', { correo: 'editor.bit@serfor.gob.pe', nombre: 'Editor Bitácora', rol: 'JEFE_PROYECTO' });
   assert.equal(nu.estado, 200);
+  // el Jefe de Proyecto escribe solo en los proyectos de su equipo (db/15): el Administrador lo integra al de GF2026
+  assert.equal((await llamar('POST', '/api/proyectos/1/equipo', { usuario_id: nu.cuerpo.usuario.usuario_id, es_responsable: true })).estado, 200);
   await llamar('POST', '/api/auth/salir');
   cookie = '';
   assert.equal((await llamar('POST', '/api/auth/ingresar', { correo: 'editor.bit@serfor.gob.pe', clave: nu.cuerpo.clave_temporal })).estado, 200);
@@ -195,10 +200,16 @@ test('PDF del plan aprobado: se adjunta con motivo, se muestra en visor y queda 
 
   // reemplazar conserva la versión anterior (nada se borra)
   assert.equal((await subir(Buffer.concat([pdf, Buffer.from('%v2')]), 'Corrección del PDF aprobado')).status, 200);
-  assert.equal(fs.readdirSync(process.env.PLANES_PDF_DIR).filter((f) => f.startsWith(`plan-${planId}`)).length, 2);
+  // almacén documental (db/14): dos versiones con su huella; la vigente es la 2 y reemplaza a la 1
+  const docs = (await llamar('GET', `/api/documentos?entidad=plan_trabajo&entidad_id=${planId}`)).cuerpo.filter((d) => d.tipo === 'PLAN_TRABAJO');
+  assert.deepEqual(docs.map((d) => d.version).sort(), [1, 2]);
+  assert.ok(docs.every((d) => /^[0-9a-f]{64}$/.test(d.sha256) && d.proyecto_id === 1));
+  const v1 = await fetch(`${base}/api/documentos/${docs.find((d) => d.version === 1).documento_id}/archivo`, { headers: { Cookie: cookie } });
+  assert.equal(Buffer.compare(Buffer.from(await v1.arrayBuffer()), pdf), 0, 'la versión anterior se conserva y se puede ver');
+  assert.ok(!fs.existsSync(process.env.PLANES_PDF_DIR) || !fs.readdirSync(process.env.PLANES_PDF_DIR).length, 'los PDF nuevos ya no van a la carpeta anterior');
 
   const bit = await llamar('GET', `/api/bitacora?consultor_id=${erb.consultor_id}`);
-  assert.ok(bit.cuerpo.some((b) => b.entidad === 'plan_trabajo' && /plan_pdf/.test(b.cambios_json || '') && b.motivo === 'Plan aprobado el 05/11/2026'));
+  assert.ok(bit.cuerpo.some((b) => b.entidad === 'documento' && /PLAN_TRABAJO/.test(b.cambios_json || '') && b.motivo === 'Plan aprobado el 05/11/2026'));
   assert.ok(!bit.cuerpo.some((b) => /esto no es un pdf/.test(JSON.stringify(b))));
 });
 
@@ -265,5 +276,5 @@ test('PDF de la adenda: sin archivo responde 404 (tiene_pdf = false); se adjunta
   assert.equal((await fetch(`${base}/api/adendas/999999/pdf`, { headers: { 'X-SGF': '1', Cookie: cookie } })).status, 404);
 
   const bit = await llamar('GET', `/api/bitacora?consultor_id=${a.consultor_id}`);
-  assert.ok(bit.cuerpo.some((b) => b.entidad === 'adenda' && /adenda_pdf/.test(b.cambios_json || '') && b.motivo === 'Adenda suscrita remitida por BPS'));
+  assert.ok(bit.cuerpo.some((b) => b.entidad === 'documento' && /"ADENDA"/.test(b.cambios_json || '') && b.motivo === 'Adenda suscrita remitida por BPS'));
 });

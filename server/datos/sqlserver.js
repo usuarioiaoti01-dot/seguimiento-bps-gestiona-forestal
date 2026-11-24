@@ -63,6 +63,43 @@ async function crearRepositorioSqlServer(config) {
     }
   }
 
+  async function crearEn(tx, entidad, fila, { usuario, motivo, origen = 'UI', consultor_id = null } = {}) {
+    const meta = ENTIDADES[entidad];
+    const cols = Object.keys(fila).filter((c) => meta.columnas.includes(c));
+    const params = Object.fromEntries(cols.map((c) => [c, fila[c]]));
+    params.__usuario = usuario;
+    const r = await consulta(
+      `INSERT INTO ${meta.tabla} (${[...cols, 'modificado_por'].join(', ')})
+       OUTPUT INSERTED.*
+       VALUES (${[...cols.map((c) => `@${c}`), '@__usuario'].join(', ')});`, params, tx);
+    const nueva = normalizar(r.recordset[0]);
+    await insertarBitacora({ usuario, entidad, entidad_id: nueva[meta.pk], consultor_id, accion: 'CREAR', cambios_json: { despues: fila }, motivo, origen }, tx);
+    return nueva;
+  }
+
+  async function actualizarEn(tx, entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR' } = {}) {
+    const meta = ENTIDADES[entidad];
+    const cols = Object.keys(cambios).filter((c) => meta.columnas.includes(c));
+    const previo = await consulta(`SELECT * FROM ${meta.tabla} WITH (UPDLOCK, ROWLOCK) WHERE ${meta.pk} = @id;`, { id: Number(id) }, tx);
+    if (!previo.recordset.length) throw Object.assign(new Error('Registro no encontrado'), { estado: 404 });
+    const fila = normalizar(previo.recordset[0]);
+    if (!meta.sinRevision && revision !== undefined && revision !== null && Number(revision) !== fila.revision) {
+      throw Object.assign(new Error('Otro usuario modificó este registro. Recargue y vuelva a intentar.'), { estado: 409, actual: fila });
+    }
+    const antes = {};
+    const despues = {};
+    for (const c of cols) if (String(fila[c] ?? '') !== String(cambios[c] ?? '')) { antes[c] = fila[c] ?? null; despues[c] = cambios[c]; }
+    if (!Object.keys(despues).length) return { fila, sinCambios: true };
+    const params = Object.fromEntries(Object.keys(despues).map((c) => [c, despues[c]]));
+    params.__id = Number(id);
+    params.__usuario = usuario;
+    const sets = [...Object.keys(despues).map((c) => `${c} = @${c}`), 'modificado_por = @__usuario'];
+    if (!meta.sinRevision) sets.push('revision = revision + 1');
+    const r = await consulta(`UPDATE ${meta.tabla} SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE ${meta.pk} = @__id;`, params, tx);
+    await insertarBitacora({ usuario, entidad, entidad_id: Number(id), consultor_id, accion, cambios_json: { antes, despues }, motivo, origen }, tx);
+    return { fila: normalizar(r.recordset[0]), antes, despues };
+  }
+
   return {
     tipo: 'sqlserver',
 
@@ -77,52 +114,53 @@ async function crearRepositorioSqlServer(config) {
         SELECT * FROM sgf.linea_base_entregable WHERE activo = 1;
         SELECT * FROM sgf.control_cambio WHERE activo = 1;
         SELECT CONVERT(CHAR(10), fecha, 23) AS fecha, descripcion, tipo FROM sgf.feriado ORDER BY fecha;
-        SELECT codigo, valor, descripcion FROM sgf.parametro;`);
-      const [consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros] = r.recordsets.map((rs) => normalizarTodas(rs));
+        SELECT codigo, valor, descripcion FROM sgf.parametro;
+        SELECT * FROM sgf.proyecto WHERE activo = 1 ORDER BY proyecto_id;
+        SELECT * FROM sgf.proyecto_miembro WHERE activo = 1 ORDER BY proyecto_id, miembro_id;`);
+      const [consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros, proyectos, miembros] = r.recordsets.map((rs) => normalizarTodas(rs));
       for (const a of actividades) a.avance = Number(a.avance);
       for (const e of linea_base) e.avance_corte = Number(e.avance_corte);
-      return { consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros };
+      return { proyectos, miembros, consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros };
     },
 
-    async crear(entidad, fila, { usuario, motivo, origen = 'UI', consultor_id = null } = {}) {
-      const meta = ENTIDADES[entidad];
-      const cols = Object.keys(fila).filter((c) => meta.columnas.includes(c));
-      return enTransaccion(async (tx) => {
-        const params = Object.fromEntries(cols.map((c) => [c, fila[c]]));
-        params.__usuario = usuario;
-        const r = await consulta(
-          `INSERT INTO ${meta.tabla} (${[...cols, 'modificado_por'].join(', ')})
-           OUTPUT INSERTED.*
-           VALUES (${[...cols.map((c) => `@${c}`), '@__usuario'].join(', ')});`, params, tx);
-        const nueva = normalizar(r.recordset[0]);
-        await insertarBitacora({ usuario, entidad, entidad_id: nueva[meta.pk], consultor_id, accion: 'CREAR', cambios_json: { despues: fila }, motivo, origen }, tx);
-        return nueva;
-      });
+    /** Escrituras de entidad: cada una en su propia transacción, o en la de `opts.tx` (ver `transaccion`). */
+    async crear(entidad, fila, opts = {}) {
+      return opts.tx ? crearEn(opts.tx, entidad, fila, opts) : enTransaccion((tx) => crearEn(tx, entidad, fila, opts));
     },
 
-    async actualizar(entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR' } = {}) {
-      const meta = ENTIDADES[entidad];
-      const cols = Object.keys(cambios).filter((c) => meta.columnas.includes(c));
-      return enTransaccion(async (tx) => {
-        const previo = await consulta(`SELECT * FROM ${meta.tabla} WITH (UPDLOCK, ROWLOCK) WHERE ${meta.pk} = @id;`, { id: Number(id) }, tx);
-        if (!previo.recordset.length) throw Object.assign(new Error('Registro no encontrado'), { estado: 404 });
-        const fila = normalizar(previo.recordset[0]);
-        if (!meta.sinRevision && revision !== undefined && revision !== null && Number(revision) !== fila.revision) {
-          throw Object.assign(new Error('Otro usuario modificó este registro. Recargue y vuelva a intentar.'), { estado: 409, actual: fila });
-        }
-        const antes = {};
-        const despues = {};
-        for (const c of cols) if (String(fila[c] ?? '') !== String(cambios[c] ?? '')) { antes[c] = fila[c] ?? null; despues[c] = cambios[c]; }
-        if (!Object.keys(despues).length) return { fila, sinCambios: true };
-        const params = Object.fromEntries(Object.keys(despues).map((c) => [c, despues[c]]));
-        params.__id = Number(id);
-        params.__usuario = usuario;
-        const sets = [...Object.keys(despues).map((c) => `${c} = @${c}`), 'modificado_por = @__usuario'];
-        if (!meta.sinRevision) sets.push('revision = revision + 1');
-        const r = await consulta(`UPDATE ${meta.tabla} SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE ${meta.pk} = @__id;`, params, tx);
-        await insertarBitacora({ usuario, entidad, entidad_id: Number(id), consultor_id, accion, cambios_json: { antes, despues }, motivo, origen }, tx);
-        return { fila: normalizar(r.recordset[0]), antes, despues };
-      });
+    async actualizar(entidad, id, cambios, opts = {}) {
+      return opts.tx ? actualizarEn(opts.tx, entidad, id, cambios, opts) : enTransaccion((tx) => actualizarEn(tx, entidad, id, cambios, opts));
+    },
+
+    /**
+     * Operación compuesta (criterio C4): `fn` recibe una vista del repositorio cuyas escrituras van todas en UNA
+     * transacción con su bitácora; si algo falla, no queda nada escrito.
+     */
+    async transaccion(fn) {
+      return enTransaccion((tx) => fn({
+        tipo: 'sqlserver',
+        crear: (entidad, fila, opts = {}) => crearEn(tx, entidad, fila, opts),
+        actualizar: (entidad, id, cambios, opts = {}) => actualizarEn(tx, entidad, id, cambios, opts),
+        registrarBitacora: (e) => insertarBitacora(e, tx),
+      }));
+    },
+
+    /** Metadatos de documentos (db/14); por defecto solo los activos. */
+    async listarDocumentos({ entidad, entidad_id, tipo, proyecto_id, incluirRetirados = false } = {}) {
+      const r = await consulta(
+        `SELECT * FROM sgf.documento
+         WHERE (@entidad IS NULL OR entidad = @entidad) AND (@entidad_id IS NULL OR entidad_id = @entidad_id)
+           AND (@tipo IS NULL OR tipo = @tipo) AND (@proyecto_id IS NULL OR proyecto_id = @proyecto_id)
+           AND (@todos = 1 OR activo = 1)
+         ORDER BY documento_id;`,
+        { entidad: entidad || null, entidad_id: entidad_id ? Number(entidad_id) : null, tipo: tipo || null, proyecto_id: proyecto_id ? Number(proyecto_id) : null, todos: incluirRetirados ? 1 : 0 });
+      return normalizarTodas(r.recordset, SIN_FECHAS).map((f) => ({ ...f, bytes: Number(f.bytes) }));
+    },
+
+    /** Proyectos en los que el usuario es miembro activo del equipo (se lee en cada petición: db/15). */
+    async proyectosDeUsuario(usuario_id) {
+      const r = await consulta('SELECT proyecto_id FROM sgf.proyecto_miembro WHERE usuario_id = @id AND activo = 1;', { id: Number(usuario_id) });
+      return r.recordset.map((f) => f.proyecto_id);
     },
 
     async historialEntidad(entidad, id) {

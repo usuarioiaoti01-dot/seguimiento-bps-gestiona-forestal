@@ -11,7 +11,11 @@
  * (bitácora en la misma transacción) y cada una recalcula el estado.
  */
 const { aDia, aFecha, hoyLima, crearCalendario } = require('./motor/calendario');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const { generarPdfPlan } = require('./plan-trabajo-pdf');
+const { planDeTablas, normalizarPlan } = require('./documentos/plan');
 
 const error = (estado, mensaje) => Object.assign(new Error(mensaje), { estado });
 const esFecha = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
@@ -23,14 +27,16 @@ const EN_REVISION_JEFE = ['EN_REVISION_JEFE', 'OBSERVADO'];
 const MAX = { area_usuaria: 300, referencia_lb: 300, supuestos: 2000, descripcion: 1000, producto: 1000 };
 const MAX_SUB = { cantidad: 20, largo: 300, producto: 500, total: 20000 };
 
-function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
-  const jefeOAdmin = (ctx) => ctx.rol === 'JEFE_PROYECTO' || ctx.rol === 'ADMIN';
+function crearFormulacion({ servicio, repo, docs = null, planesPdf = null, almacen = null, leerDocumento = null, extraerPlanConIA = null, dirOrigen = null }) {
+  // Un Jefe de Proyecto solo actúa sobre los planes de los proyectos de su equipo (db/15; `contexto` lo marca).
+  const jefeOAdmin = (ctx) => ctx.rol === 'ADMIN' || (ctx.rol === 'JEFE_PROYECTO' && !ctx.fueraDeEquipo);
 
   async function contexto(consultor_id, ctx) {
     if (ctx.rol === 'PROFESIONAL' && Number(ctx.consultor_id) !== Number(consultor_id)) throw error(403, 'Solo puede formular su propio plan de trabajo');
     const d = await servicio.datos(true);
     const consultor = d.consultores.find((c) => c.consultor_id === Number(consultor_id) && vivo(c));
     if (!consultor) throw error(404, 'Profesional no encontrado');
+    if (ctx.rol === 'JEFE_PROYECTO' && Array.isArray(ctx.proyectos)) ctx.fueraDeEquipo = !ctx.proyectos.includes(consultor.proyecto_id); // lee, pero no edita ni aprueba
     const contrato = d.contratos.find((k) => k.consultor_id === consultor.consultor_id && vivo(k)) || null;
     const plan = d.planes.filter((p) => p.consultor_id === consultor.consultor_id && vivo(p)).sort((x, y) => y.plan_id - x.plan_id)[0] || null;
     const e = await servicio.estado();
@@ -89,10 +95,11 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
         return { fecha: b.fecha, usuario: b.usuario, de: antes && antes.estado, a: despues.estado, comentario: b.motivo };
       }).filter(Boolean);
     }
+    const proy = (d.proyectos || []).find((p) => p.proyecto_id === consultor.proyecto_id);
     return {
       consultor: { consultor_id: consultor.consultor_id, clave: consultor.clave, nombres: consultor.nombres, perfil: consultor.perfil },
       contrato: contrato && { numero: contrato.numero, expediente: contrato.expediente },
-      proyecto: PROYECTO, area_tecnica: AREA_TECNICA,
+      proyecto: (proy && proy.nombre) || PROYECTO, area_tecnica: (proy && proy.area_tecnica) || AREA_TECNICA,
       periodo: per,
       resumen: { total_dias: actividades.reduce((s, a) => s + (Number(a.dias_habiles) || 0), 0), dias_periodo: per ? per.dias_habiles : null },
       aprobacion: plan && plan.fecha_aprobacion ? { fecha: plan.fecha_aprobacion, suscripcion: (adenda && adenda.fecha_suscripcion) || null, dias: adenda && adenda.fecha_suscripcion ? aDia(plan.fecha_aprobacion) - aDia(adenda.fecha_suscripcion) : null } : null,
@@ -100,7 +107,7 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
         plan_id: plan.plan_id, estado: plan.estado, revision: plan.revision, area_usuaria: plan.area_usuaria || '', referencia_lb: plan.referencia_lb || '', supuestos: plan.supuestos || '',
         fecha_envio: plan.fecha_envio || null, fecha_aprobacion_jefe: plan.fecha_aprobacion_jefe || null, aprobado_jefe_por: plan.aprobado_jefe_por || null,
         fecha_aprobacion: plan.fecha_aprobacion || null, observacion_revision: plan.observacion_revision || null,
-        tiene_pdf: !!(planesPdf && planesPdf.info(plan.plan_id).existe),
+        tiene_pdf: !!(planesPdf && planesPdf.info(plan.plan_id).existe), documento_origen: plan.documento_origen || null,
       },
       actividades, permisos: permisos(plan, ctx, consultor_id), historial,
     };
@@ -192,6 +199,92 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
   }
   const motivoFechas = 'Fechas recalculadas según los días de cada actividad';
 
+  // ---- Registrar un plan ya elaborado en un documento: vista previa → confirmación → actividades del plan
+  const importaciones = new Map(); // id -> { usuario, consultor_id, nombre, buffer, plan, creada }
+  const TTL_IMPORTACION = 30 * 60000;
+  const limpiarImportaciones = () => { const t = Date.now(); for (const [id, x] of importaciones) if (t - x.creada > TTL_IMPORTACION) importaciones.delete(id); };
+
+  async function previsualizarPlan(consultor_id, { buffer, nombre }, ctx) {
+    limpiarImportaciones();
+    if (!leerDocumento) throw error(503, 'La lectura de documentos no está disponible');
+    const c = await contexto(consultor_id, ctx);
+    if (c.plan) exigirEdicion(c, ctx); else if (ctx.rol !== 'PROFESIONAL' && !jefeOAdmin(ctx)) throw error(403, 'Sin permiso');
+    if (!c.adenda) throw error(409, 'El profesional no tiene un periodo vigente: el plazo del plan lo fija su adenda u Orden de Servicio');
+    if (!Buffer.isBuffer(buffer) || !buffer.length) throw error(400, 'Adjunte el documento del plan');
+    const leido = await leerDocumento(buffer, nombre);
+    let plan;
+    if (leido.tipo === 'tablas') {
+      plan = planDeTablas(leido.hojas);
+      if (!plan) throw error(400, 'No se encontró la tabla de actividades. Use las columnas N.°, Actividad, Producto / evidencia y Días (o Inicio y Fin)');
+    } else {
+      if (!extraerPlanConIA) throw error(503, 'La lectura de PDF y Word requiere el asistente de IA, que no está configurado');
+      const r = await extraerPlanConIA({ texto: leido.texto, usuario: { correo: ctx.usuario }, clave: c.consultor.clave });
+      plan = normalizarPlan(r.plan);
+      if (!plan.actividades.length) throw error(400, 'No se encontraron actividades en el documento. Compruebe que sea un plan de trabajo o cronograma de actividades');
+    }
+    const existentes = c.plan ? activasDe(c.d, c.plan) : [];
+    let acumulado = existentes.reduce((t, a) => t + (Number(a.dias_plan) || 0), 0);
+    for (const a of plan.actividades) {
+      try {
+        const { f, subs } = preparar({ descripcion: a.descripcion, producto: a.producto, dias_plan: a.dias, subactividades: a.subactividades });
+        validarActividad(f, subs, c, acumulado);
+        acumulado += f.dias_plan; a.valida = true;
+      } catch (e) { a.valida = false; a.error = e.message; }
+    }
+    const per = periodo(c.adenda, c.d);
+    const id = crypto.randomUUID();
+    importaciones.set(id, { usuario: ctx.usuario, consultor_id: Number(consultor_id), nombre, buffer, plan, creada: Date.now() });
+    return {
+      importacion_id: id, archivo: nombre, existentes: existentes.length,
+      resumen: { actividades: plan.actividades.length, validas: plan.actividades.filter((a) => a.valida).length, dias_total: plan.actividades.filter((a) => a.valida).reduce((t, a) => t + a.dias, 0), dias_periodo: per ? per.dias_habiles : null },
+      plan,
+    };
+  }
+
+  async function aplicarPlan(consultor_id, { importacion_id, indices }, ctx) {
+    limpiarImportaciones();
+    const imp = importaciones.get(importacion_id);
+    if (!imp || imp.usuario !== ctx.usuario || imp.consultor_id !== Number(consultor_id)) throw error(404, 'La vista previa venció: suba el documento otra vez');
+    const elegidas = (Array.isArray(indices) ? indices : imp.plan.actividades.map((_, i) => i)).map(Number).filter((i) => Number.isInteger(i) && imp.plan.actividades[i]);
+    if (!elegidas.length) throw error(400, 'Seleccione al menos una actividad');
+    const ctxAct = { ...ctx, motivo: `Plan registrado desde el documento «${imp.nombre}»` };
+    const creadas = []; const fallidas = [];
+    for (const i of [...new Set(elegidas)].sort((a, b) => a - b)) {
+      const a = imp.plan.actividades[i];
+      try {
+        const fila = await agregarActividad(consultor_id, { descripcion: a.descripcion, producto: a.producto, dias_plan: a.dias, subactividades: a.subactividades }, ctxAct);
+        creadas.push({ indice: i, numero: fila.numero, descripcion: a.descripcion });
+      } catch (e) { fallidas.push({ indice: i, descripcion: a.descripcion, motivo: e.message }); }
+    }
+    if (creadas.length) {
+      const c = await contexto(consultor_id, ctx);
+      const cab = {};
+      if (imp.plan.area_usuaria && !c.plan.area_usuaria) cab.area_usuaria = imp.plan.area_usuaria.slice(0, MAX.area_usuaria);
+      if (imp.plan.supuestos && !c.plan.supuestos) cab.supuestos = imp.plan.supuestos.slice(0, MAX.supuestos);
+      await repo.actualizar('plan_trabajo', c.plan.plan_id, { ...cab, documento_origen: imp.nombre.slice(0, 300) }, { usuario: ctx.usuario, motivo: `Plan registrado desde el documento «${imp.nombre}»`, origen: ctx.origen || 'UI', consultor_id: c.consultor.consultor_id });
+      if (dirOrigen) {
+        fs.mkdirSync(dirOrigen, { recursive: true });
+        const m = imp.nombre.match(/\.[a-z0-9]+$/i);
+        const archivo = `plan-${c.plan.plan_id}-${Date.now()}${m ? m[0].toLowerCase() : '.bin'}`;
+        fs.writeFileSync(path.join(dirOrigen, archivo), imp.buffer);
+        // también en el almacén documental (db/14), en su carpeta de siempre
+        if (almacen) await almacen.registrarExistente({ tipo: 'ORIGEN_PLAN', entidad: 'plan_trabajo', entidad_id: c.plan.plan_id, consultor_id: c.consultor.consultor_id, raiz: 'PLANES_ORIGEN', ruta_relativa: archivo, nombre: imp.nombre, buffer: imp.buffer }, { usuario: ctx.usuario, motivo: `Documento de origen del plan: «${imp.nombre}»`, origen: ctx.origen || 'UI' });
+      }
+    }
+    importaciones.delete(importacion_id);
+    return { creadas, fallidas };
+  }
+
+  /** Último documento con el que se registró el plan (para verlo o descargarlo). */
+  async function rutaOrigen(consultor_id, ctx) {
+    const c = await contexto(consultor_id, ctx);
+    if (!c.plan || !c.plan.documento_origen || !dirOrigen) throw error(404, 'El plan no se registró desde un documento');
+    const prefijo = `plan-${c.plan.plan_id}-`;
+    const archivos = fs.existsSync(dirOrigen) ? fs.readdirSync(dirOrigen).filter((f) => f.startsWith(prefijo)).sort() : [];
+    if (!archivos.length) throw error(404, 'El documento ya no está disponible');
+    return { archivo: path.join(dirOrigen, archivos[archivos.length - 1]), nombre: c.plan.documento_origen };
+  }
+
   /** Agrega una actividad (se graba al registrarla). */
   async function agregarActividad(consultor_id, entrada, ctx) {
     let c = await contexto(consultor_id, ctx);
@@ -236,7 +329,10 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
     const { a, c } = await actividadDe(actividad_id, ctx);
     exigirEdicion(c, ctx);
     const r = docs.guardar(a.actividad_id, buf, { nombre, usuario: ctx.usuario });
-    await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'actividad', entidad_id: a.actividad_id, consultor_id: c.consultor.consultor_id, accion: 'MODIFICAR', cambios_json: { documento_pdf: { nombre: r.nombre, bytes: r.bytes, sha256: r.sha256 } }, motivo: `Documento agregado a la actividad ${a.numero}`, origen: ctx.origen || 'UI' });
+    const motivo = `Documento agregado a la actividad ${a.numero}`;
+    // queda en el almacén documental (db/14) como EVIDENCIA de la actividad (el archivo sigue en ACTIVIDADES_PDF_DIR)
+    if (almacen) await almacen.registrarExistente({ tipo: 'EVIDENCIA', entidad: 'actividad', entidad_id: a.actividad_id, consultor_id: c.consultor.consultor_id, raiz: 'ACTIVIDADES_PDF', ruta_relativa: `act-${a.actividad_id}-${r.n}.pdf`, nombre: r.nombre, buffer: buf, reemplazar: false }, { usuario: ctx.usuario, motivo, origen: ctx.origen || 'UI' });
+    else await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'actividad', entidad_id: a.actividad_id, consultor_id: c.consultor.consultor_id, accion: 'MODIFICAR', cambios_json: { documento_pdf: { nombre: r.nombre, bytes: r.bytes, sha256: r.sha256 } }, motivo, origen: ctx.origen || 'UI' });
     return { n: r.n, nombre: r.nombre, bytes: r.bytes };
   }
 
@@ -245,7 +341,9 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
     const { a, c } = await actividadDe(actividad_id, ctx);
     exigirEdicion(c, ctx);
     const f = docs.quitar(a.actividad_id, n, ctx.usuario);
-    await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'actividad', entidad_id: a.actividad_id, consultor_id: c.consultor.consultor_id, accion: 'MODIFICAR', cambios_json: { documento_pdf_retirado: { nombre: f.nombre } }, motivo: `Documento retirado de la actividad ${a.numero}`, origen: ctx.origen || 'UI' });
+    const reg = almacen && almacen.porUbicacion('ACTIVIDADES_PDF', `act-${a.actividad_id}-${Number(n)}.pdf`);
+    if (reg) await almacen.retirar(reg.documento_id, { usuario: ctx.usuario, motivo: `Documento retirado de la actividad ${a.numero}`, origen: ctx.origen || 'UI' });
+    else await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'actividad', entidad_id: a.actividad_id, consultor_id: c.consultor.consultor_id, accion: 'MODIFICAR', cambios_json: { documento_pdf_retirado: { nombre: f.nombre } }, motivo: `Documento retirado de la actividad ${a.numero}`, origen: ctx.origen || 'UI' });
     return { ok: true };
   }
 
@@ -306,8 +404,8 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
     if (!planesPdf) return null;
     try {
       const buffer = await generarPdfPlan(await detalle(consultor_id, ctx));
-      const r = planesPdf.guardar(plan_id, buffer);
-      await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'plan_trabajo', entidad_id: plan_id, consultor_id: Number(consultor_id), accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: ctx.origen || 'UI' });
+      const r = await planesPdf.guardar(plan_id, buffer, { usuario: ctx.usuario, motivo, origen: ctx.origen || 'UI', consultor_id: Number(consultor_id), nombre: `plan-trabajo-${plan_id}.pdf` });
+      if (!r.documento_id) await repo.registrarBitacora({ usuario: ctx.usuario, entidad: 'plan_trabajo', entidad_id: plan_id, consultor_id: Number(consultor_id), accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: ctx.origen || 'UI' });
       return r;
     } catch (err) { console.error('No se pudo generar el PDF del plan:', err.message); return null; }
   }
@@ -350,7 +448,7 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null }) {
     return { planes, actividades };
   }
 
-  return { detalle, historialGeneral, generarPdf, agregarDocumento, quitarDocumento, rutaDocumento, guardarCabecera, agregarActividad, modificarActividad, quitarActividad, transicion, reiniciarPlanes };
+  return { detalle, historialGeneral, generarPdf, agregarDocumento, quitarDocumento, rutaDocumento, guardarCabecera, agregarActividad, previsualizarPlan, aplicarPlan, rutaOrigen, modificarActividad, quitarActividad, transicion, reiniciarPlanes };
 }
 
 module.exports = { crearFormulacion };

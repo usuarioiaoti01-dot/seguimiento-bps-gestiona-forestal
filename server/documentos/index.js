@@ -18,7 +18,7 @@ const error = (estado, mensaje) => Object.assign(new Error(mensaje), { estado })
 const COLECCION = { actividad: 'actividades', adenda: 'adendas', plan_trabajo: 'planes' };
 const PK = { actividad: 'actividad_id', adenda: 'adenda_id', plan_trabajo: 'plan_id' };
 
-function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null, ttlMs = 30 * 60000 }) {
+function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null, almacen = null, ttlMs = 30 * 60000 }) {
   const cargas = new Map(); // carga_id -> { usuario, nombre, buffer, formato, origen, cambios, creada }
 
   const limpiar = () => { const ahora = Date.now(); for (const [id, c] of cargas) if (ahora - c.creada > ttlMs) cargas.delete(id); };
@@ -101,8 +101,9 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
     const d = await servicio.datos(true);
     const a = d.adendas.find((x) => x.adenda_id === Number(adendaId));
     const k = a && d.contratos.find((x) => x.contrato_id === a.contrato_id);
-    const r = adendasPdf.guardar(adendaId, carga.buffer);
-    await repo.registrarBitacora({ usuario: usuario.correo, entidad: 'adenda', entidad_id: Number(adendaId), consultor_id: k ? k.consultor_id : null, accion: 'MODIFICAR', cambios_json: { adenda_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
+    const r = await adendasPdf.guardar(adendaId, carga.buffer, { usuario: usuario.correo, motivo, origen: 'UI', consultor_id: k ? k.consultor_id : null, nombre: carga.nombre });
+    // con el almacén (db/14) la bitácora ya quedó con el documento; sin él (pruebas antiguas) se anota aquí
+    if (!r.documento_id) await repo.registrarBitacora({ usuario: usuario.correo, entidad: 'adenda', entidad_id: Number(adendaId), consultor_id: k ? k.consultor_id : null, accion: 'MODIFICAR', cambios_json: { adenda_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
     return { adenda_id: Number(adendaId), etiqueta };
   }
 
@@ -122,6 +123,10 @@ function crearDocumentos({ servicio, repo, extraerConIA, dir, adendasPdf = null,
     const entrada = { id: Math.max(0, ...indice.map((x) => x.id)) + 1, archivo: carga.nombre, formato: carga.formato, ruta: `${mes}/${archivo}`, bytes: carga.buffer.length, sha256, usuario: usuario.correo, fecha: new Date().toISOString(), origen: carga.origen, ...resumen };
     indice.push(entrada);
     fs.writeFileSync(rutaIndice, JSON.stringify(indice));
+    // el original también queda en el almacén documental (db/14), en su carpeta de siempre
+    if (almacen) {
+      try { await almacen.registrarExistente({ tipo: 'CARGA', entidad: 'carga', entidad_id: entrada.id, raiz: 'DOCUMENTOS', ruta_relativa: entrada.ruta, nombre: carga.nombre, buffer: carga.buffer, reemplazar: false }, { usuario: usuario.correo, motivo: `Original de la carga «${carga.nombre}»`, origen: carga.origen }); } catch (err) { console.error('[almacén] No se pudo registrar el original de la carga:', err.message); }
+    }
     await repo.registrarBitacora({
       usuario: usuario.correo, entidad: 'documento', entidad_id: null, accion: 'CREAR', origen: carga.origen,
       cambios_json: { archivo: carga.nombre, formato: carga.formato, tipo: carga.tipo || 'general', sha256, bytes: carga.buffer.length, aplicados: resumen.aplicados, fallidos: resumen.fallidos, omitidos: resumen.omitidos },

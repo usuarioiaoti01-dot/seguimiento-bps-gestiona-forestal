@@ -7,3 +7,6 @@ data/actividades-pdf/
 data/documentos/
 *.log
 .claude/
+data/contratos-pdf/
+data/planes-origen/
+data/almacen/

@@ -8,6 +8,7 @@ import { vistaFormular } from './vistas/formulacion.js';
 import { vistaLineaBase } from './vistas/lineabase.js';
 import { vistaBitacora } from './vistas/bitacora.js';
 import { vistaConfiguracion } from './vistas/configuracion.js';
+import { vistaProyectos, cargarProyectos, fijarProyecto, pintarSelectorProyecto } from './vistas/proyectos.js';
 import { vistaActualizarArchivo } from './vistas/actualizar-archivo.js';
 import { montarAsistente } from './vistas/asistente.js';
 
@@ -21,6 +22,7 @@ const RUTAS = [
   { patron: /^#\/adendas$/, vista: vistaAdendas, menu: 'adendas' },
   { patron: /^#\/formular(?:\/(\d+))?$/, vista: vistaFormular, menu: 'formular' },
   { patron: /^#\/linea-base$/, vista: vistaLineaBase, menu: 'lb' },
+  { patron: /^#\/proyectos$/, vista: vistaProyectos, menu: 'proyectos' },
   { patron: /^#\/actualizar-archivo$/, vista: vistaActualizarArchivo, menu: 'actualizar' },
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },
   { patron: /^#\/configuracion$/, vista: vistaConfiguracion, menu: 'config' },
@@ -28,7 +30,7 @@ const RUTAS = [
 
 function pantallaIngreso() {
   raiz.innerHTML = `<div class="ingreso"><form class="tarjeta" id="f-ingreso">
-    <div class="logo" style="color:var(--marca)">${ICONOS.logo.replace('rgba(255,255,255,.14)', 'var(--marca)')}<div><b>Seguimiento Actividades Gestiona Forestal 2026</b><small class="mut">OTI – SERFOR</small></div></div>
+    <div class="logo" style="color:var(--marca)">${ICONOS.logo.replace('rgba(255,255,255,.14)', 'var(--marca)')}<div><b>SEGUIMIENTO DE PROYECTOS DE LA OFICINA DE TECNOLOGIAS DE LA INFORMACION</b><small class="mut">OTI – SERFOR</small></div></div>
     <div class="campo"><label for="correo">Correo electrónico</label><input id="correo" name="correo" type="email" autocomplete="username" required></div>
     <div class="campo"><label for="clave">Clave</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
     <button class="btn prim" type="submit">Ingresar</button>
@@ -65,20 +67,56 @@ async function pantallaCambioClave(obligatorio = true) {
   } catch (err) { fallo(err); return pantallaCambioClave(obligatorio); }
 }
 
+/** Opciones que se repiten dentro de cada proyecto (las mismas que tenía el menú único). */
+const OPCIONES_PROYECTO = [
+  ['#/', 'tablero', 'Adendas - Plazos', 'tablero'], ['#/adendas', 'adendas', 'Contratos y adendas', 'adendas'], ['#/formular', 'formular', 'Formular Plan de Trabajo', 'adendas'],
+  ['#/seguimiento', 'seguimiento', 'Seguimiento Actividades', 'seguimiento'], ['#/linea-base', 'lb', 'Línea base 2026', 'lb'], ['#/actualizar-archivo', 'actualizar', 'Actualizar Desde Archivo', 'seguimiento'],
+];
+/** Las opciones dependen de lo que el proyecto maneja (profesionales, adendas, línea base). */
+const opcionesDe = (p) => (p.con_profesionales === 0 ? [] : OPCIONES_PROYECTO
+  .filter(([, menu]) => (menu !== 'actualizar' || p.escribe) && !(menu === 'adendas' && p.con_adendas === 0) && !(menu === 'lb' && p.con_linea_base === 0))
+  .map((o) => (o[1] === 'tablero' && p.con_adendas === 0 ? [o[0], o[1], 'Plazos - Vencimientos', o[3]] : o)));
+const abiertos = new Set(['grupo']); // grupos desplegados del menú (se conserva al repintar)
+
+/** Menú «Proyectos»: cada proyecto creado se despliega con sus opciones; elegir una fija el proyecto y abre la pantalla. */
+function pintarMenuProyectos() {
+  const cont = document.getElementById('menu-proy');
+  if (!cont) return;
+  if (estado.proyecto_id) abiertos.add(`p${estado.proyecto_id}`);
+  const lista = estado.proyectos || [];
+  cont.innerHTML = `<details class="grupo-menu" data-k="grupo" ${abiertos.has('grupo') ? 'open' : ''}><summary>${ICONOS.config}<span>Proyectos</span></summary>
+    ${lista.map((p) => `<details class="proy-menu" data-k="p${p.proyecto_id}" ${abiertos.has(`p${p.proyecto_id}`) ? 'open' : ''}><summary title="${esc(p.nombre)}"><span>${esc(p.codigo)} · ${esc(p.nombre)}</span></summary>
+      ${opcionesDe(p).map(([href, menu, texto, icono]) => `<a href="${href}" class="sub2" data-menu="${menu}" data-proy="${p.proyecto_id}">${ICONOS[icono]}${esc(texto)}</a>`).join('') || '<span class="sub2 mut2">Sin profesionales: nada que seguir</span>'}</details>`).join('') || '<span class="sub mut2">Aún no hay proyectos</span>'}
+  </details>
+  <a href="#/proyectos" data-menu="proyectos">${ICONOS.adendas}Administrar proyectos</a>`;
+  cont.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => { if (d.open) abiertos.add(d.dataset.k); else abiertos.delete(d.dataset.k); }));
+  cont.querySelectorAll('a[data-proy]').forEach((a) => {
+    a.addEventListener('click', () => {
+      if (estado.proyecto_id !== Number(a.dataset.proy)) { fijarProyecto(a.dataset.proy); pintarSelectorProyecto(); }
+      if (location.hash === a.getAttribute('href') || (a.getAttribute('href') === '#/' && (location.hash === '' || location.hash === '#/'))) enrutar(); // mismo destino: no hay cambio de hash
+    });
+  });
+  marcarMenu(rutaActual);
+}
+let rutaActual = '';
+function marcarMenu(menu) {
+  rutaActual = menu;
+  document.querySelectorAll('.menu a').forEach((a) => {
+    const deProyecto = a.dataset.proy !== undefined;
+    a.classList.toggle('activo', a.dataset.menu === menu && (!deProyecto || Number(a.dataset.proy) === estado.proyecto_id));
+  });
+}
+window.sgfPintarMenu = pintarMenuProyectos;
+
 function estructura() {
   const u = estado.usuario;
   raiz.innerHTML = `<div class="marco">
     <aside class="lateral">
-      <div class="logo">${ICONOS.logo}<div><b>TABLERO SEGUIMIENTO ACTIVIDADES GESTIONA FORESTAL - 2026</b><small>Gestiona Forestal · PI2 Bosques</small></div></div>
+      <div class="logo">${ICONOS.logo}<div><b>SEGUIMIENTO DE PROYECTOS DE LA OFICINA DE TECNOLOGIAS DE LA INFORMACION</b><small id="proy-pie">OTI – SERFOR</small></div></div>
       <nav class="menu">${esProfesional() ? `
         <a href="#/consultor/${u.consultor_id}" data-menu="seguimiento">${ICONOS.tablero}Mi información</a>
         <a href="#/formular" data-menu="formular">${ICONOS.adendas}Formular Plan de Trabajo</a>` : `
-        <a href="#/" data-menu="tablero">${ICONOS.tablero}Adendas - Plazos</a>
-        <a href="#/adendas" data-menu="adendas">${ICONOS.adendas}Contratos y adendas</a>
-        <a href="#/formular" data-menu="formular">${ICONOS.adendas}Formular Plan de Trabajo</a>
-        <a href="#/seguimiento" data-menu="seguimiento">${ICONOS.seguimiento}Seguimiento Actividades</a>
-        <a href="#/linea-base" data-menu="lb">${ICONOS.lb}Línea base 2026</a>
-        <a href="#/actualizar-archivo" data-menu="actualizar">${ICONOS.seguimiento}Actualizar Desde Archivo</a>
+        <div id="menu-proy"></div>
         <a href="#/bitacora" data-menu="bitacora">${ICONOS.bitacora}Bitácora</a>
         <a href="#/configuracion" data-menu="config">${ICONOS.config}Configuración</a>`}
       </nav>
@@ -102,6 +140,7 @@ function estructura() {
   const corte = document.getElementById('corte');
   corte.value = estado.corte || '';
   corte.onchange = () => { estado.corte = corte.value; enrutar(); };
+  if (!esProfesional()) cargarProyectos().then(pintarSelectorProyecto);
   montarAsistente();
 }
 
@@ -113,7 +152,7 @@ async function enrutar() {
   }
   const ruta = RUTAS.find((r) => r.patron.test(hash)) || RUTAS[0];
   const m = hash.match(ruta.patron);
-  document.querySelectorAll('.menu a').forEach((a) => a.classList.toggle('activo', a.dataset.menu === ruta.menu));
+  marcarMenu(ruta.menu);
   const vista = document.getElementById('vista');
   vista.innerHTML = '<div class="vacio">Cargando…</div>';
   try {

@@ -16,14 +16,14 @@ function parametro(datos, codigo, defecto) {
   return p && p.valor !== '' && p.valor !== null && p.valor !== undefined ? p.valor : defecto;
 }
 
-function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbralHolgura } = {}) {
+function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbralHolgura, proyecto_id } = {}) {
   metodo = metodo || parametro(datos, 'METODO_PRONOSTICO', 'RENDIMIENTO');
   spiMinimo = Number(spiMinimo ?? parametro(datos, 'SPI_MINIMO', 0.4));
   umbralVigencia = Number(umbralVigencia ?? parametro(datos, 'UMBRAL_VIGENCIA_DIAS', 15));
   umbralHolgura = Number(umbralHolgura ?? parametro(datos, 'UMBRAL_HOLGURA_DIAS', 5));
   const feriados = (datos.feriados || []).map((f) => f.fecha);
 
-  const consultores = datos.consultores.filter((c) => c.activo !== 0 && c.activo !== false);
+  const consultores = datos.consultores.filter((c) => c.activo !== 0 && c.activo !== false && (!proyecto_id || c.proyecto_id === Number(proyecto_id)));
   const resultado = [];
 
   for (const c of consultores) {
@@ -62,16 +62,25 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
   for (const it of items) {
     const v = it.vigencia;
     const pr = it.pronostico;
+    const proy = (datos.proyectos || []).find((x) => x.proyecto_id === it.consultor.proyecto_id);
+    const porOS = !!(proy && proy.con_orden_servicio === 1); // el vencimiento que se controla es el de la Orden de Servicio
     // Vigencia
     if (v.dias_restantes !== null && v.dias_restantes < 0) {
-      add('ALTA', 'VIGENCIA_VENCIDA', it, 'Vigencia contractual vencida',
+      add('ALTA', 'VIGENCIA_VENCIDA', it, porOS ? 'Orden de Servicio vencida' : 'Vigencia contractual vencida',
         `La vigencia terminó el ${ff(v.fin_vigencia)} (hace ${-v.dias_restantes} días).`,
         v.adenda_siguiente ? `Gestionar la suscripción de la Adenda N.° ${v.adenda_siguiente.numero} (${v.adenda_siguiente.estado.toLowerCase()}).` : 'Confirmar si el servicio continúa; no otorgar conformidades por periodos sin contrato vigente.');
     } else if (v.dias_restantes !== null && v.dias_restantes <= umbralVigencia) {
       const sig = v.adenda_siguiente;
-      add(sig && sig.estado === 'EN_TRAMITE' ? 'MEDIA' : 'ALTA', 'VIGENCIA_POR_VENCER', it, `Vigencia vence en ${v.dias_restantes} días`,
+      add(sig && sig.estado === 'EN_TRAMITE' ? 'MEDIA' : 'ALTA', 'VIGENCIA_POR_VENCER', it, porOS ? `La Orden de Servicio vence en ${v.dias_restantes} días` : `Vigencia vence en ${v.dias_restantes} días`,
         `Fin de vigencia: ${ff(v.fin_vigencia)}.` + (sig ? ` Adenda N.° ${sig.numero} ${sig.estado === 'ANUNCIADA' ? 'anunciada, sin documento' : 'en trámite'} hasta el ${ff(sig.fecha_fin)}.` : ' No hay adenda posterior registrada.'),
         sig ? 'Hacer seguimiento a BPS y solicitar el plan de trabajo del nuevo periodo.' : 'Definir continuidad del servicio o el cierre ordenado de entregables.');
+    }
+    if (porOS) {
+      for (const al of alertas) {
+        if (al.consultor_id === it.consultor.consultor_id && (al.codigo === 'VIGENCIA_VENCIDA' || al.codigo === 'VIGENCIA_POR_VENCER')) {
+          al.accion = 'Renovar la Orden de Servicio (Administrar proyectos → Renovar) o definir el cierre del servicio; no otorgar conformidades sin vigencia.';
+        }
+      }
     }
     // Cobertura histórica entre adendas confirmadas (concluidas y firmadas)
     for (const t of it.cobertura.brechas) {

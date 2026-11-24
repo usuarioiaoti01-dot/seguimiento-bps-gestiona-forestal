@@ -1,4 +1,4 @@
-import { api, esc, ff, badge, puede, modal, aviso, fallo } from '../util.js';
+import { api, esc, ff, badge, puede, puedeProyecto, modal, aviso, fallo } from '../util.js';
 
 const MAX_MB = 15;
 
@@ -67,7 +67,7 @@ function cargarPdf(c) {
  */
 export function abrirPlanDeTrabajo(c) {
   const p = c.plan;
-  const editor = puede('EDITOR');
+  const editor = puedeProyecto();
   const nombre = `Plan de trabajo · ${c.nombres.toUpperCase()}`;
   if (p && p.tiene_pdf) {
     const url = `/api/planes/${p.plan_id}/pdf`;

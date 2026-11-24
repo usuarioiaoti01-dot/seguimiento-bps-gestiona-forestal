@@ -1,4 +1,4 @@
-import { api, esc, ff, pct, titulo, badge, puede, aviso, fallo, modal } from '../util.js';
+import { api, esc, ff, pct, titulo, badge, puede, puedeProyecto, aviso, fallo, modal } from '../util.js';
 
 export async function vistaLineaBase(el) {
   const lb = await api('GET', '/linea-base');
@@ -22,7 +22,7 @@ export async function vistaLineaBase(el) {
       <td class="num">${ff(x.inicio_lb)}</td><td class="num">${ff(x.fin_lb)}</td><td class="d num">${pct(x.avance_corte)}</td><td>${badge(x.cobertura)}</td>
       <td class="mut2">${x.actividades.map((a) => esc(a.numero)).join(', ') || '—'}</td>
       <td class="mut2 desc">${esc(x.situacion || '')}${x.situacion_oti ? `<br><b>OTI:</b> ${esc(x.situacion_oti)}` : ''}</td>
-      <td>${puede('EDITOR') ? `<button class="btn peq" data-lb="${x.entregable_id}">Anotar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="10" class="vacio">Sin resultados</td></tr>';
+      <td>${puedeProyecto() ? `<button class="btn peq" data-lb="${x.entregable_id}">Anotar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="10" class="vacio">Sin resultados</td></tr>';
     el.querySelectorAll('[data-lb]').forEach((b) => { b.onclick = () => anotar(lb.find((x) => x.entregable_id === Number(b.dataset.lb))); });
   };
   el.querySelector('#f-cob').onchange = pintar;

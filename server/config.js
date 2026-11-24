@@ -33,7 +33,10 @@ const config = {
   actividadesPdf: e.ACTIVIDADES_PDF_DIR || path.join(RAIZ, 'data', 'actividades-pdf'), // documentos PDF de las actividades del plan
   planesPdf: e.PLANES_PDF_DIR || path.join(RAIZ, 'data', 'planes-pdf'), // PDF de los planes aprobados
   adendasPdf: e.ADENDAS_PDF_DIR || path.join(RAIZ, 'data', 'adendas-pdf'), // PDF de las adendas
+  contratosPdf: e.CONTRATOS_PDF_DIR || path.join(RAIZ, 'data', 'contratos-pdf'), // Orden de Servicio / contrato y Términos de Referencia del personal
+  planesOrigen: e.PLANES_ORIGEN_DIR || path.join(RAIZ, 'data', 'planes-origen'), // documentos con los que se registró un plan ya elaborado
   documentos: e.DOCUMENTOS_DIR || path.join(RAIZ, 'data', 'documentos'), // originales de los documentos cargados
+  almacen: e.DOCUMENTOS_RAIZ || path.join(RAIZ, 'data', 'almacen'), // almacén documental único (db/14): <proyecto>/<entidad>/<id>/<tipo>-<fecha>-<sha8>.<ext>
   archivoDemo: e.ARCHIVO_DEMO || path.join(RAIZ, 'data', 'demo-estado.json'),
   sqlserver: {
     servidor: e.SQL_SERVIDOR,

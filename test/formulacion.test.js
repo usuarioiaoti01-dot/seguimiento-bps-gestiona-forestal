@@ -8,6 +8,7 @@ const fs = require('fs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sgf-form-'));
 process.env.MODO_DATOS = 'memoria';
 process.env.ARCHIVO_DEMO = path.join(tmp, 'demo.json');
+process.env.DOCUMENTOS_RAIZ = path.join(tmp, 'almacen');
 const { crearRepositorio } = require('../server/datos');
 const { crearServicio } = require('../server/servicio');
 const { crearFormulacion } = require('../server/formulacion');
@@ -157,4 +158,53 @@ test('Formular plan de trabajo: reinicio, etapas, permisos, plazos de la adenda 
   ac2 = (await servicio.detalleConsultor(id)).actividades.find((x) => x.actividad_id === a1.actividad_id);
   assert.equal(ac2.avance, 100);
   assert.equal(ac2.estado, 'CONCLUIDA');
+});
+
+test('Registrar un plan ya elaborado en un documento: vista previa, confirmación y actividades en la aplicación', async () => {
+  const { leer } = require('../server/documentos/lector');
+  const { planDeTablas, normalizarPlan } = require('../server/documentos/plan');
+  const repo = await crearRepositorio();
+  const servicio = crearServicio(repo);
+  const f = crearFormulacion({ servicio, repo, docs: crearActividadDocs({ dir: path.join(tmp, 'docs2') }), planesPdf: crearPlanesPdf({ dir: path.join(tmp, 'planes2') }), leerDocumento: leer, dirOrigen: path.join(tmp, 'origen'),
+    extraerPlanConIA: async () => ({ plan: { area_usuaria: 'DCGPFFS', supuestos: 'Acceso a los servidores', actividades: [{ descripcion: 'Análisis del servicio', producto: 'Informe de análisis', dias: 4 }, { descripcion: 'Desarrollo', subactividades: [{ texto: 'Diseño', dias: 2, producto: 'Modelo de datos' }, { texto: 'Código', dias: 3, producto: 'Módulo desplegado' }] }] } }) });
+  await f.reiniciarPlanes('prueba');
+  const it = (await servicio.estado()).consultores.find((c) => c.vigencia.adenda_vigente);
+  const id = it.consultor.consultor_id;
+  const prof = { usuario: 'p@serfor.gob.pe', nombre: 'Profesional', rol: 'PROFESIONAL', consultor_id: id };
+  const otro = { ...prof, consultor_id: id + 1000 };
+  const nl = String.fromCharCode(10);
+
+  // intérprete puro: filas 1, 1.1, 1.2 y días calculados con fechas
+  const plan = planDeTablas([{ nombre: 'Plan', filas: [
+    ['CRONOGRAMA DE ACTIVIDADES'], ['N.°', 'Actividad', 'Producto / evidencia verificable', 'Inicio', 'Fin', 'Días hábiles'],
+    ['1', 'Análisis', 'Informe', '2026-11-02', '2026-11-06', ''], ['2', 'Desarrollo', '', '', '', 5],
+    ['2.1', '• Diseño', 'Modelo', '', '', 2], ['2.2', '• Código', 'Módulo', '', '', 3], ['', 'Total', '', '', '', 10]] }]);
+  assert.equal(plan.actividades.length, 2);
+  assert.equal(plan.actividades[0].dias, 5, 'días hábiles entre las fechas del documento');
+  assert.ok(plan.actividades[0].advertencias.some((a) => /fechas del documento/.test(a)));
+  assert.deepEqual(plan.actividades[1].subactividades.map((s) => [s.texto, s.dias]), [['Diseño', 2], ['Código', 3]]);
+  assert.equal(planDeTablas([{ nombre: 'x', filas: [['a', 'b'], ['1', '2']] }]), null);
+  assert.equal(normalizarPlan({ actividades: [{ descripcion: 'X', subactividades: [{ texto: 'a', dias: 2 }, { texto: 'b', dias: 3 }] }] }).actividades[0].dias, 5);
+
+  // Excel/CSV
+  const csv = Buffer.from(['N.°;Actividad;Producto / evidencia;Días', '1;Análisis del servicio;Informe de análisis;4', '2;Desarrollo;;5', '2.1;Diseño;Modelo de datos;2', '2.2;Código;Módulo desplegado;3', '3;Pruebas;Acta de pruebas;100', ''].join(nl));
+  await rechaza(f.previsualizarPlan(id, { buffer: csv, nombre: 'plan.csv' }, otro), 403);
+  const vista = await f.previsualizarPlan(id, { buffer: csv, nombre: 'plan.csv' }, prof);
+  assert.equal(vista.resumen.actividades, 3);
+  assert.equal(vista.resumen.validas, 2, 'la de 100 días no es válida');
+  assert.match(vista.plan.actividades[2].error, /1 a 99/);
+  assert.equal((await f.detalle(id, prof)).actividades.length, 0, 'la vista previa no cambia nada');
+  const ap = await f.aplicarPlan(id, { importacion_id: vista.importacion_id, indices: [0, 1, 2] }, prof);
+  assert.equal(ap.creadas.length, 2);
+  assert.equal(ap.fallidas.length, 1);
+  const det = await f.detalle(id, prof);
+  assert.equal(det.actividades.length, 2);
+  assert.deepEqual(det.actividades[1].subactividades.map((s) => s.dias), [2, 3]);
+  assert.equal(det.plan.documento_origen, 'plan.csv');
+  const orig = await f.rutaOrigen(id, prof);
+  assert.ok(fs.existsSync(orig.archivo));
+  await rechaza(f.aplicarPlan(id, { importacion_id: vista.importacion_id }, prof), 404, undefined);
+
+  // un archivo que no es un PDF válido se rechaza antes de llegar al asistente
+  await assert.rejects(f.previsualizarPlan(id, { buffer: Buffer.from('no es pdf'), nombre: 'plan.pdf' }, prof));
 });

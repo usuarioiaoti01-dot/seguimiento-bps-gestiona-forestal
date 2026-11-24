@@ -1,4 +1,4 @@
-import { api, esc, fh, titulo, modal, aviso, fallo } from '../util.js';
+import { api, esc, fh, titulo, modal, aviso, fallo, puedeProyecto } from '../util.js';
 
 const MAX_BYTES = 50 * 1024 * 1024;
 const FORMATOS = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', 'project-xml': 'MS Project (XML)' };
@@ -58,6 +58,7 @@ async function verDocumento(doc) {
 }
 
 export async function vistaActualizarArchivo(el) {
+  if (!puedeProyecto()) { el.innerHTML = '<p>Solo puede actualizar archivos de los proyectos de su equipo.</p>'; return; }
   titulo('Actualizar desde archivo', 'Suba uno o más archivos (Excel, CSV, XML de MS Project, PDF o Word): se leen, se incorporan los datos que concuerdan y el documento queda guardado');
   el.innerHTML = `<div class="tarjeta"><div class="cab"><h2>Subir archivos</h2></div><div class="cuerpo">
       <input type="file" id="a-archivos" multiple accept=".xlsx,.csv,.xml,.pdf,.docx" style="display:none">

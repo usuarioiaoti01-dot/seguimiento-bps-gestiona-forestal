@@ -1,4 +1,4 @@
-import { api, estado, esc, ff, titulo, badge, semaforo, diasBadge, barraAvance, puede, aviso, fallo } from '../util.js';
+import { api, estado, esc, ff, titulo, badge, semaforo, diasBadge, barraAvance, puede, puedeProyecto, aviso, fallo } from '../util.js';
 import { abrirCargaDocumento } from './carga-documento.js';
 import { abrirPlanDeTrabajo, abrirListaPlanes } from './plan-pdf.js';
 
@@ -29,9 +29,9 @@ export async function vistaSeguimiento(el, [clave = '']) {
   </div>
   <div class="tarjeta" id="profesionales">
     <div class="cab"><h2>PROFESIONALES</h2><div class="acciones">
-      ${puede('EDITOR') ? '<button class="btn peq prim" id="b-cargar">Cargar documento</button>' : ''}
-      <a class="btn peq" href="/api/exportar/actividades.csv">Exportar actividades (CSV)</a>
-      ${puede('EDITOR') ? '<button class="btn peq" id="b-recalc">Recalcular y guardar corte</button>' : ''}</div></div>
+      ${puedeProyecto() ? '<button class="btn peq prim" id="b-cargar">Cargar documento</button>' : ''}
+      <a class="btn peq" href="/api/exportar/actividades.csv${estado.proyecto_id ? `?proyecto_id=${estado.proyecto_id}` : ''}">Exportar actividades (CSV)</a>
+      ${puedeProyecto() ? '<button class="btn peq" id="b-recalc">Recalcular y guardar corte</button>' : ''}</div></div>
     <div id="filtro" class="filtro-activo" hidden></div>
     <div class="cuerpo sin tabla-env"><table>
       <thead><tr><th></th><th>Profesional</th><th>Vigencia</th><th>Restan</th><th>Plan aprobado</th><th>Avance</th></tr></thead>

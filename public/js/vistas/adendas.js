@@ -1,4 +1,4 @@
-import { api, esc, ff, titulo, badge, estado, puede, modal, opciones, aviso, fallo, pedirTexto } from '../util.js';
+import { api, esc, ff, titulo, badge, estado, puede, puedeProyecto, modal, opciones, aviso, fallo, pedirTexto } from '../util.js';
 import { abrirCargaDocumento } from './carga-documento.js';
 import { verPlanPdf } from './plan-pdf.js';
 import { editarAdenda } from './consultor.js';
@@ -8,7 +8,7 @@ export async function vistaAdendas(el) {
   titulo('CONTRATOS Y ADENDAS', 'Vigencia por profesional · la vigencia solo se amplía con adendas FIRMADAS');
   el.innerHTML = `
   <div class="tarjeta"><div class="cab"><h2>Adendas registradas</h2>
-    ${puede('EDITOR') ? '<div class="acciones"><button class="btn peq" id="b-agregar">Agregar adenda</button><button class="btn peq prim" id="b-doc-adenda">Subir documento de adenda</button></div>' : ''}
+    ${puedeProyecto() ? '<div class="acciones"><button class="btn peq" id="b-agregar">Agregar adenda</button><button class="btn peq prim" id="b-doc-adenda">Subir documento de adenda</button></div>' : ''}
     <div class="filtros"><select id="f-est"><option value="">Todos los estados</option><option value="FIRMADA">Firmada</option><option value="EN_TRAMITE">En trámite</option><option value="ANUNCIADA">Anunciada</option><option value="ANULADA">Anulada</option></select></div></div>
     <div class="cuerpo sin tabla-env"><table class="tabla-adendas"><tbody id="cuerpo"></tbody></table></div></div>
   <p class="mut2">Pulse un profesional para desplegar sus adendas; «Ver ficha» abre su ficha completa. «Subir documento de adenda» lee el documento y propone los datos antes de guardar; «Agregar adenda» las registra a mano. Todos los cambios quedan en el historial y la bitácora.</p>`;
@@ -32,7 +32,7 @@ export async function vistaAdendas(el) {
     };
   }
   const abiertos = new Set(); // profesionales desplegados
-  const editor = puede('EDITOR');
+  const editor = puedeProyecto();
 
   // Visor del PDF de la adenda; si el sistema no lo tiene, avisa y permite cargarlo.
   function verAdendaPdf(a) {

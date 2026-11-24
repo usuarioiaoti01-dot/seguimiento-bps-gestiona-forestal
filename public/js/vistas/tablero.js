@@ -1,6 +1,8 @@
 import { api, estado, esc, titulo, badge, modal } from '../util.js';
 import { renderVigenciaTimeline } from '../vigencia-timeline/vigencia-timeline.js';
 import { adaptarVigencias } from '../vigencia-adaptador.js';
+import { cargarProyectos } from './proyectos.js';
+import { montarProfesionales } from './profesionales-proyecto.js';
 
 // El historial completo se dibuja con el eje desde mayo de 2026 (inicio de las primeras adendas).
 const EJE_HISTORIAL_DESDE = '2026-05-01';
@@ -91,6 +93,16 @@ export async function vistaTablero(el) {
     velo.querySelector('#alertas').onclick = (ev) => { if (ev.target.closest('a')) { aFicha = true; velo.querySelector('.cerrar').click(); } }; // al ir a una ficha, se cierra la ventana
     return cerrada.then(() => { if (!aFicha) abrirAlertas(); }); // al cerrar el detalle se vuelve al resumen
   };
+
+  // Profesionales del proyecto elegido en el menú: su Orden de Servicio / contrato, el vencimiento y los documentos
+  if (estado.proyecto_id) {
+    const lista = estado.proyectos && estado.proyectos.length ? estado.proyectos : await cargarProyectos();
+    const proy = lista.find((x) => x.proyecto_id === estado.proyecto_id);
+    if (proy && proy.con_profesionales) {
+      el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="prof-proy"><div class="cab"><h2>Profesionales del proyecto ${esc(proy.codigo)}${proy.con_orden_servicio ? ' · vencimiento de la Orden de Servicio' : ''}</h2></div><div class="cuerpo sin tabla-env" id="prof-proy-cuerpo"><div class="vacio">Cargando…</div></div></div>`);
+      await montarProfesionales(el.querySelector('#prof-proy-cuerpo'), proy);
+    }
+  }
 
   // Ventana principal: una fila por prioridad con su cantidad.
   const abrirAlertas = () => {

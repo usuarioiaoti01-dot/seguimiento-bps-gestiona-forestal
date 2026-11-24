@@ -11,7 +11,8 @@
     "semilla": "python herramientas/generar_semilla.py",
     "bd:probar": "node herramientas/bd.js probar",
     "bd:instalar": "node herramientas/bd.js instalar",
-    "planes:reiniciar": "node herramientas/reiniciar_planes.js"
+    "planes:reiniciar": "node herramientas/reiniciar_planes.js",
+    "documentos:migrar": "node herramientas/migrar_documentos.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

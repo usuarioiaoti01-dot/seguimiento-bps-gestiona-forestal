@@ -39,6 +39,36 @@ function migrarPerfiles(db) {
   }
 }
 
+/**
+ * Equivale a db/12_proyectos.sql: crea el proyecto inicial y asigna a él los consultores que aún no tienen proyecto.
+ */
+function migrarProyectos(db) {
+  if (!db.proyectos) db.proyectos = [];
+  if (!db.proyectos.length) {
+    db.proyectos.push({ proyecto_id: 1, codigo: 'GF2026', nombre: 'Gestiona Forestal 2026 – Proyecto Bosques PI 2 (UE 003 – CUI 2455355)', financiador: 'KfW', area_tecnica: 'Oficina de Tecnologías de la Información – OTI', jefe_proyecto: null, fecha_inicio: null, fecha_fin: null, descripcion: null, estado: 'ACTIVO', activo: 1, revision: 1 });
+  }
+  for (const p of db.proyectos) {
+    for (const [k, v] of Object.entries({ con_profesionales: 1, con_adendas: 1, con_linea_base: 1, con_orden_servicio: 0, con_tdr: 0 })) if (p[k] === undefined) p[k] = v;
+  }
+  for (const c of db.consultores || []) if (!c.proyecto_id) c.proyecto_id = db.proyectos[0].proyecto_id;
+}
+
+/**
+ * Equivale a db/14 y db/15: colecciones de documentos y de equipos. Al crear la colección de equipos, cada
+ * JEFE_PROYECTO activo queda en el equipo de todos los proyectos existentes (conserva el acceso de antes).
+ */
+function migrarEquipos(db) {
+  if (!db.documentos) db.documentos = [];
+  if (db.miembros) return;
+  db.miembros = [];
+  let id = 1;
+  for (const p of (db.proyectos || []).filter((x) => x.activo !== 0)) {
+    for (const u of (db.usuarios || []).filter((x) => x.activo !== 0 && x.rol === 'JEFE_PROYECTO')) {
+      db.miembros.push({ miembro_id: id++, proyecto_id: p.proyecto_id, usuario_id: u.usuario_id, es_responsable: 0, desde: new Date().toISOString().slice(0, 10), hasta: null, activo: 1, revision: 1, modificado_por: 'db/15' });
+    }
+  }
+}
+
 function crearRepositorioMemoria({ semilla, archivo } = {}) {
   let db;
   if (archivo && fs.existsSync(archivo)) {
@@ -61,6 +91,9 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
     db.bitacora.push({ bitacora_id: 1, fecha: new Date().toISOString(), usuario: 'sistema', entidad: 'carga_inicial', entidad_id: null, consultor_id: null, accion: 'CREAR', cambios_json: null, motivo: 'Carga inicial desde la matriz de control del 03/11/2026', origen: 'SCRIPT' });
   }
 
+  migrarProyectos(db);
+  migrarEquipos(db);
+
   let pendiente = null;
   const guardar = () => {
     if (!archivo) return;
@@ -80,12 +113,12 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
     return fila;
   }
 
-  return {
+  const api = {
     tipo: 'memoria',
 
     async cargarTodo() {
       const out = {};
-      for (const k of ['consultores', 'contratos', 'adendas', 'planes', 'actividades', 'dependencias', 'linea_base', 'controles_cambio', 'feriados', 'parametros']) {
+      for (const k of ['proyectos', 'miembros', 'consultores', 'contratos', 'adendas', 'planes', 'actividades', 'dependencias', 'linea_base', 'controles_cambio', 'feriados', 'parametros']) {
         out[k] = copia(db[k] || []);
       }
       return out;
@@ -93,7 +126,10 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
 
     async crear(entidad, fila, { usuario, motivo, origen = 'UI', consultor_id = null } = {}) {
       const meta = ENTIDADES[entidad];
+      if (!db[meta.coleccion]) db[meta.coleccion] = [];
       const nueva = { ...fila, [meta.pk]: sig(db[meta.coleccion], meta.pk), activo: fila.activo ?? 1, modificado_por: usuario };
+      if (entidad === 'documento' && !nueva.subido_en) nueva.subido_en = new Date().toISOString();
+      if (entidad === 'proyecto_miembro' && !nueva.desde) nueva.desde = new Date().toISOString().slice(0, 10);
       if (!meta.sinRevision) nueva.revision = 1;
       db[meta.coleccion].push(nueva);
       bitacora({ usuario, entidad, entidad_id: nueva[meta.pk], consultor_id, accion: 'CREAR', cambios_json: { despues: fila }, motivo, origen });
@@ -120,6 +156,15 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
       bitacora({ usuario, entidad, entidad_id: Number(id), consultor_id, accion, cambios_json: { antes, despues }, motivo, origen });
       guardar();
       return { fila: copia(fila), antes, despues };
+    },
+
+    async listarDocumentos({ entidad, entidad_id, tipo, proyecto_id, incluirRetirados = false } = {}) {
+      return copia(db.documentos.filter((f) => (!entidad || f.entidad === entidad) && (!entidad_id || f.entidad_id === Number(entidad_id))
+        && (!tipo || f.tipo === tipo) && (!proyecto_id || f.proyecto_id === Number(proyecto_id)) && (incluirRetirados || f.activo !== 0)));
+    },
+
+    async proyectosDeUsuario(usuario_id) {
+      return db.miembros.filter((m) => m.usuario_id === Number(usuario_id) && m.activo !== 0).map((m) => m.proyecto_id);
     },
 
     async historialEntidad(entidad, id) {
@@ -230,7 +275,23 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
       return Object.values(porDia);
     },
     async cerrar() { if (archivo) fs.writeFileSync(archivo, JSON.stringify(db)); },
+
+    /**
+     * Operación compuesta (criterio C4): equivale a la transacción de SQL Server. Si `fn` falla, se restaura la
+     * copia previa y no queda nada escrito. (Modo demo/pruebas: no aísla de escrituras concurrentes).
+     */
+    async transaccion(fn) {
+      const previo = JSON.stringify(db);
+      try {
+        return await fn({ tipo: 'memoria', crear: api.crear, actualizar: api.actualizar, registrarBitacora: api.registrarBitacora });
+      } catch (err) {
+        db = JSON.parse(previo);
+        guardar();
+        throw err;
+      }
+    },
   };
+  return api;
 }
 
 module.exports = { crearRepositorioMemoria };

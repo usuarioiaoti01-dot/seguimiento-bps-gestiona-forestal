@@ -14,13 +14,24 @@ const seg = require('./seguridad');
 const { hoyLima, aDia } = require('./motor/calendario');
 const { crearPlanesPdf } = require('./planes-pdf');
 const { crearDocumentos } = require('./documentos');
+const { leer: leerArchivo } = require('./documentos/lector');
 const { crearFormulacion } = require('./formulacion');
 const { crearActividadDocs } = require('./actividad-docs');
 const { plantillaXlsx } = require('./documentos/plantilla');
+const { crearAlmacen } = require('./documentos/almacen');
+const permisos = require('./permisos');
 
 async function crearApp() {
-  const repo = await crearRepositorio();
-  const servicio = crearServicio(repo);
+  // El repositorio va envuelto: toda escritura respeta el alcance por proyecto del usuario (permisos.js, db/15)
+  let servicio = null;
+  const proyectoDeConsultor = async (id) => {
+    let d = await servicio.datos();
+    let c = d.consultores.find((x) => x.consultor_id === Number(id));
+    if (!c) { d = await servicio.datos(true); c = d.consultores.find((x) => x.consultor_id === Number(id)); }
+    return c && c.proyecto_id ? Number(c.proyecto_id) : null;
+  };
+  const repo = permisos.envolverRepositorio(await crearRepositorio(), { proyectoDeConsultor });
+  servicio = crearServicio(repo);
   const agente = crearAgente({ servicio });
   await seg.asegurarAdministrador(repo);
   await servicio.recalculoDiario();
@@ -48,6 +59,8 @@ async function crearApp() {
       const u = await repo.buscarUsuarioId(req.usuario.id);
       if (!u || !u.activo) { res.clearCookie(seg.COOKIE, { path: '/' }); req.usuario = null; return next(); }
       Object.assign(req.usuario, { correo: u.correo, nombre: u.nombre, rol: u.rol, consultor_id: u.consultor_id ?? null, cambiar: !!u.debe_cambiar_clave });
+      // proyectos de su equipo: un Jefe de Proyecto solo escribe en ellos (se leen en cada petición, como el perfil)
+      req.usuario.proyectos = u.rol === 'JEFE_PROYECTO' ? await repo.proyectosDeUsuario(u.usuario_id) : [];
       next();
     } catch (err) { next(err); }
   });
@@ -84,14 +97,28 @@ async function crearApp() {
     } catch (err) { return next(err); }
   });
 
-  const planesPdf = crearPlanesPdf({ dir: config.planesPdf });
-  const adendasPdf = crearPlanesPdf({ dir: config.adendasPdf, prefijo: 'adenda' });
-  const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, adendasPdf, extraerConIA: (a) => agente.extraerDocumento(a) });
+  // Almacén documental único (db/14): los PDF nuevos van a DOCUMENTOS_RAIZ con sus metadatos en sgf.documento;
+  // los que ya estaban en las carpetas anteriores se siguen encontrando (adaptador `coleccion`).
+  const almacen = crearAlmacen({
+    repo, resolverProyecto: proyectoDeConsultor,
+    raices: { ALMACEN: config.almacen, PLANES_PDF: config.planesPdf, ADENDAS_PDF: config.adendasPdf, ACTIVIDADES_PDF: config.actividadesPdf, CONTRATOS_PDF: config.contratosPdf, PLANES_ORIGEN: config.planesOrigen, DOCUMENTOS: config.documentos },
+  });
+  await almacen.cargar();
+  const planesPdf = almacen.coleccion({ tipo: 'PLAN_TRABAJO', entidad: 'plan_trabajo', legado: crearPlanesPdf({ dir: config.planesPdf }) });
+  const adendasPdf = almacen.coleccion({ tipo: 'ADENDA', entidad: 'adenda', legado: crearPlanesPdf({ dir: config.adendasPdf, prefijo: 'adenda' }) });
+  // Orden de Servicio o contrato del personal: confidencial (monto, datos del contratado), decisión D4 y criterio C10
+  const contratosPdf = almacen.coleccion({ tipos: ['ORDEN_SERVICIO', 'CONTRATO'], entidad: 'contrato', legado: crearPlanesPdf({ dir: config.contratosPdf, prefijo: 'contrato' }), confidencial: true });
+  const tdrPdf = almacen.coleccion({ tipo: 'TDR', entidad: 'contrato', legado: crearPlanesPdf({ dir: config.contratosPdf, prefijo: 'tdr' }) }); // Términos de Referencia
+  const documentos = crearDocumentos({ servicio, repo, dir: config.documentos, adendasPdf, almacen, extraerConIA: (a) => agente.extraerDocumento(a) });
   const actividadDocs = crearActividadDocs({ dir: config.actividadesPdf });
-  const formulacion = crearFormulacion({ servicio, repo, docs: actividadDocs, planesPdf });
-  const ctxF = (req) => ({ ...ctx(req), consultor_id: req.usuario.consultor_id });
+  const formulacion = crearFormulacion({ servicio, repo, docs: actividadDocs, planesPdf, almacen, leerDocumento: leerArchivo, extraerPlanConIA: (a) => agente.extraerDocumento({ ...a, modo: 'plan' }), dirOrigen: config.planesOrigen });
+  const ctxF = (req) => ({ ...ctx(req), consultor_id: req.usuario.consultor_id, proyectos: req.usuario.rol === 'JEFE_PROYECTO' ? req.usuario.proyectos || [] : undefined });
   const ctx = (req) => ({ usuario: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, origen: 'UI', motivo: (req.body && req.body.motivo) || null });
-  const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
+  // Cada manejador corre dentro del alcance del usuario (permisos.js): el repositorio rechaza escrituras fuera de su equipo
+  const h = (fn) => (req, res, next) => permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => Promise.resolve().then(() => fn(req, res)))
+    .then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
+  const motivoDe = (req) => { let m = ''; try { m = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ } return m; };
+  const nombreDe = (req) => { let n = ''; try { n = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ } return n.slice(0, 200); };
 
   // Recalcular una vez al día con la primera consulta
   let ultimoDia = hoyLima();
@@ -116,7 +143,7 @@ async function crearApp() {
   app.post('/api/auth/salir', (req, res) => { res.clearCookie(seg.COOKIE, { path: '/' }); res.json({ ok: true }); });
   app.get('/api/auth/yo', (req, res) => {
     if (!req.usuario) return res.status(401).json({ error: 'Sesión no iniciada' });
-    res.json({ usuario: { correo: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, consultor_id: req.usuario.consultor_id ?? null, cambiarClave: !!req.usuario.cambiar }, ia: !!config.ia.claveApi, modo: repo.tipo });
+    res.json({ usuario: { correo: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, consultor_id: req.usuario.consultor_id ?? null, proyectos: req.usuario.proyectos || [], cambiarClave: !!req.usuario.cambiar }, ia: !!config.ia.claveApi, modo: repo.tipo });
   });
   app.post('/api/auth/cambiar-clave', seg.requiere('LECTOR'), h(async (req, res) => {
     const { actual, nueva } = req.body || {};
@@ -214,7 +241,7 @@ async function crearApp() {
 
   // ------------------------------------------------------------ consultas
   app.get('/api/estado', seg.requiere('LECTOR'), h(async (req) => {
-    const e = await servicio.estado({ corte: req.query.corte });
+    const e = await servicio.estado({ corte: req.query.corte, proyecto_id: req.query.proyecto_id });
     return {
       corte: e.corte, metodo: e.metodo, indicadores: e.indicadores, alertas: e.alertas,
       consultores: e.consultores.map((it) => ({
@@ -256,11 +283,9 @@ async function crearApp() {
   // PUT y POST: algunos IIS (módulo WebDAV) rechazan PUT; el cliente usa POST
   const guardarPdfPlan = h(async (req) => {
     const plan = await planDe(req.params.id);
-    let motivo = '';
-    try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
+    const motivo = motivoDe(req);
     if (motivo.length < 5) throw Object.assign(new Error('Indique el motivo (mínimo 5 caracteres)'), { estado: 400, requiereMotivo: true });
-    const r = planesPdf.guardar(plan.plan_id, req.body);
-    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: plan.plan_id, consultor_id: plan.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
+    await planesPdf.guardar(plan.plan_id, req.body, { usuario: req.usuario.correo, motivo, origen: 'UI', consultor_id: plan.consultor_id, nombre: nombreDe(req) || `plan-${plan.plan_id}.pdf` });
     return { ok: true, ...planesPdf.info(plan.plan_id) };
   });
   for (const metodo of ['put', 'post']) app[metodo]('/api/planes/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: planesPdf.MAX_BYTES }), guardarPdfPlan);
@@ -268,6 +293,21 @@ async function crearApp() {
   app.get('/api/formulacion/historial', seg.requiere('EDITOR'), h((req) => formulacion.historialGeneral(ctxF(req))));
   app.get('/api/formulacion/:id', seg.requiere('LECTOR'), h((req) => formulacion.detalle(req.params.id, ctxF(req))));
   app.put('/api/formulacion/:id/cabecera', seg.requiere('LECTOR'), h((req) => formulacion.guardarCabecera(req.params.id, req.body || {}, ctxF(req))));
+  // Registrar un plan ya elaborado en un documento (Excel/CSV, PDF o Word): vista previa y confirmación
+  app.post('/api/formulacion/:id/plan-documento/previsualizar', seg.requiere('LECTOR'), express.raw({ type: 'application/octet-stream', limit: 50 * 1024 * 1024 }), h((req) => {
+    let nombre = '';
+    try { nombre = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ }
+    if (!nombre) throw Object.assign(new Error('Falta el nombre del archivo'), { estado: 400 });
+    return formulacion.previsualizarPlan(req.params.id, { buffer: req.body, nombre: nombre.slice(0, 200) }, ctxF(req));
+  }));
+  app.post('/api/formulacion/:id/plan-documento/aplicar', seg.requiere('LECTOR'), h((req) => formulacion.aplicarPlan(req.params.id, req.body || {}, ctxF(req))));
+  app.get('/api/formulacion/:id/plan-documento', seg.requiere('LECTOR'), (req, res, next) => {
+    formulacion.rutaOrigen(req.params.id, ctxF(req)).then(({ archivo, nombre }) => {
+      const pdf = /\.pdf$/i.test(archivo);
+      res.set({ 'Content-Type': pdf ? 'application/pdf' : 'application/octet-stream', 'Content-Disposition': `${pdf ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(nombre)}`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' });
+      res.sendFile(archivo, (err) => { if (err && !res.headersSent) next(err); });
+    }).catch(next);
+  });
   app.post('/api/formulacion/:id/actividades', seg.requiere('LECTOR'), h((req) => formulacion.agregarActividad(req.params.id, req.body || {}, ctxF(req))));
   app.patch('/api/formulacion/actividades/:id', seg.requiere('LECTOR'), h((req) => formulacion.modificarActividad(req.params.id, req.body || {}, ctxF(req))));
   // Documentos PDF de respaldo de cada actividad
@@ -287,8 +327,7 @@ async function crearApp() {
   // PDF del plan aprobado: lo genera solo el Administrador y queda como el PDF del plan (versión anterior conservada)
   app.post('/api/formulacion/:id/pdf', seg.requiere('ADMIN'), h(async (req) => {
     const g = await formulacion.generarPdf(req.params.id, ctxF(req));
-    const r = planesPdf.guardar(g.plan_id, g.buffer);
-    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'plan_trabajo', entidad_id: g.plan_id, consultor_id: g.consultor_id, accion: 'MODIFICAR', cambios_json: { plan_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo: 'PDF del plan de trabajo aprobado generado por el Administrador', origen: 'UI' });
+    await planesPdf.guardar(g.plan_id, g.buffer, { usuario: req.usuario.correo, motivo: 'PDF del plan de trabajo aprobado generado por el Administrador', origen: 'UI', consultor_id: g.consultor_id, nombre: `plan-trabajo-${g.plan_id}.pdf` });
     return { ok: true, plan_id: g.plan_id, ...planesPdf.info(g.plan_id) };
   }));
   // Revisión del plan: aprobarlo u observarlo (con observación y plazo para subsanar). Exige el PDF del plan.
@@ -316,24 +355,24 @@ async function crearApp() {
   });
   const guardarPdfAdenda = h(async (req) => {
     const { a, consultor_id } = await adendaDe(req.params.id);
-    let motivo = '';
-    try { motivo = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ }
+    const motivo = motivoDe(req);
     if (motivo.length < 5) throw Object.assign(new Error('Indique el motivo (mínimo 5 caracteres)'), { estado: 400, requiereMotivo: true });
-    const r = adendasPdf.guardar(a.adenda_id, req.body);
-    await repo.registrarBitacora({ usuario: req.usuario.correo, entidad: 'adenda', entidad_id: a.adenda_id, consultor_id, accion: 'MODIFICAR', cambios_json: { adenda_pdf: { bytes: r.bytes, sha256: r.sha256, reemplaza: r.reemplaza } }, motivo, origen: 'UI' });
+    await adendasPdf.guardar(a.adenda_id, req.body, { usuario: req.usuario.correo, motivo, origen: 'UI', consultor_id, nombre: nombreDe(req) || `adenda-${a.adenda_id}.pdf` });
     return { ok: true, ...adendasPdf.info(a.adenda_id) };
   });
   // PUT y POST: algunos IIS (módulo WebDAV) rechazan PUT con 405; la interfaz usa POST.
   for (const metodo of ['put', 'post']) app[metodo]('/api/adendas/:id/pdf', seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: adendasPdf.MAX_BYTES }), guardarPdfAdenda);
-  app.get('/api/linea-base', seg.requiere('LECTOR'), h(() => servicio.lineaBase()));
+  app.get('/api/linea-base', seg.requiere('LECTOR'), h((req) => servicio.lineaBase({ proyecto_id: req.query.proyecto_id })));
   // Plan de trabajo aprobado de la adenda (si su PDF existe): la lista de adendas lo muestra en «Documento»
   const planAprobadoDe = (d, a) => {
     const p = d.planes.filter((x) => x.adenda_id === a.adenda_id && x.estado === 'APROBADO' && x.activo !== 0 && x.activo !== false).sort((x, y) => y.plan_id - x.plan_id)[0];
     return p && planesPdf.info(p.plan_id).existe ? { plan_aprobado: { plan_id: p.plan_id, fecha_aprobacion: p.fecha_aprobacion || null } } : {};
   };
-  app.get('/api/adendas', seg.requiere('LECTOR'), h(async () => {
+  app.get('/api/adendas', seg.requiere('LECTOR'), h(async (req) => {
     const d = await servicio.datos();
-    return d.adendas.map((a) => {
+    const pid = req.query.proyecto_id ? Number(req.query.proyecto_id) : null;
+    const enProyecto = (a) => { if (!pid) return true; const k = d.contratos.find((x) => x.contrato_id === a.contrato_id); const c = k && d.consultores.find((x) => x.consultor_id === k.consultor_id); return !!c && c.proyecto_id === pid; };
+    return d.adendas.filter(enProyecto).map((a) => {
       const k = d.contratos.find((x) => x.contrato_id === a.contrato_id) || {};
       const c = d.consultores.find((x) => x.consultor_id === k.consultor_id) || {};
       return { ...a, contrato: k.numero, consultor_id: c.consultor_id, clave: c.clave, nombres: c.nombres, tiene_pdf: adendasPdf.info(a.adenda_id).existe, ...planAprobadoDe(d, a) };
@@ -354,7 +393,7 @@ async function crearApp() {
   // Exportación CSV (abre en Excel con separador ;)
   app.get('/api/exportar/actividades.csv', seg.requiere('LECTOR'), async (req, res, next) => {
     try {
-      const e = await servicio.estado();
+      const e = await servicio.estado({ proyecto_id: req.query.proyecto_id });
       const cols = ['clave', 'consultor', 'numero', 'descripcion', 'clasificacion', 'edt', 'inicio_plan', 'fin_plan', 'inicio_real', 'fin_real', 'avance', 'estado', 'inicio_probable', 'fin_probable', 'desvio_dias', 'situacion', 'critica', 'fin_vigencia'];
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const filas = [cols.join(';')];
@@ -377,11 +416,99 @@ async function crearApp() {
   app.post('/api/simular', seg.requiere('LECTOR'), h((req) => servicio.simular(req.body.cambios, { corte: req.body.corte })));
   app.post('/api/recalcular', seg.requiere('EDITOR'), h((req) => servicio.recalcularYGuardar(req.usuario.correo, (req.body && req.body.motivo) || 'Recálculo manual')));
 
-  const RUTAS_ENTIDAD = { adendas: 'adenda', contratos: 'contrato', planes: 'plan_trabajo', 'linea-base': 'linea_base_entregable', 'controles-cambio': 'control_cambio', consultores: 'consultor' };
+  // Proyectos: lista con sus cifras y alta de profesionales dentro de un proyecto (Jefe de Proyecto y Administrador)
+  app.get('/api/proyectos', seg.requiere('LECTOR'), h(async (req) => {
+    const d = await servicio.datos();
+    const e = await servicio.estado();
+    const alcance = permisos.alcanceDe(req.usuario);
+    const vivos = d.proyectos.filter((p) => p.activo !== 0 && p.activo !== false);
+    const equipos = Object.fromEntries(await Promise.all(vivos.map(async (p) => [p.proyecto_id, await servicio.equipoDe(p.proyecto_id)])));
+    return vivos.map((p) => {
+      const items = e.consultores.filter((it) => it.consultor.proyecto_id === p.proyecto_id);
+      const equipo = equipos[p.proyecto_id].map(({ miembro_id, usuario_id, nombre, es_responsable }) => ({ miembro_id, usuario_id, nombre, es_responsable }));
+      return {
+        ...p, profesionales: items.length, activos: items.filter((it) => it.consultor.estado === 'ACTIVO').length, planes_aprobados: items.filter((it) => it.plan && it.plan.estado === 'APROBADO').length,
+        equipo, responsable: (equipo.find((m) => m.es_responsable) || {}).nombre || null, escribe: req.usuario.rol !== 'PROFESIONAL' && permisos.puedeEscribirProyecto(alcance, p.proyecto_id),
+      };
+    });
+  }));
+  // Equipo del proyecto (db/15): lo ven todos los perfiles de la OTI; solo el Administrador lo define
+  app.get('/api/proyectos/:id/equipo', seg.requiere('EDITOR'), h((req) => servicio.equipoDe(req.params.id)));
+  app.post('/api/proyectos/:id/equipo', seg.requiere('ADMIN'), h((req) => servicio.agregarMiembro(req.params.id, req.body || {}, ctx(req))));
+  app.patch('/api/proyectos/:id/equipo/:mid', seg.requiere('ADMIN'), h((req) => servicio.actualizarMiembro(req.params.id, req.params.mid, req.body || {}, ctx(req))));
+  app.post('/api/proyectos/:id/equipo/:mid/quitar', seg.requiere('ADMIN'), h((req) => servicio.quitarMiembro(req.params.id, req.params.mid, { ...ctx(req), revision: req.body?.revision })));
+  // Documentos del almacén (db/14): lista por entidad y descarga con control de permiso (los confidenciales, solo el equipo)
+  const docPublico = (f) => ({ documento_id: f.documento_id, tipo: f.tipo, entidad: f.entidad, entidad_id: f.entidad_id, proyecto_id: f.proyecto_id, nombre_original: f.nombre_original, tipo_mime: f.tipo_mime, bytes: f.bytes, sha256: f.sha256, version: f.version, confidencial: !!f.confidencial, subido_por: f.subido_por, subido_en: f.subido_en });
+  app.get('/api/documentos', seg.requiere('EDITOR'), h((req) => {
+    if (!req.query.entidad) throw Object.assign(new Error('Indique la entidad'), { estado: 400 });
+    return almacen.deEntidad(String(req.query.entidad), req.query.entidad_id ? Number(req.query.entidad_id) : null).filter(f => !f.confidencial || permisos.puedeVerConfidencial(req.usuario, f.proyecto_id)).map(docPublico);
+  }));
+  app.get('/api/documentos/:id(\\d+)/archivo', seg.requiere('EDITOR'), (req, res, next) => {
+    try {
+      const f = almacen.buscar(req.params.id);
+      if (!f) throw Object.assign(new Error('Documento no encontrado'), { estado: 404 });
+      if (f.confidencial && !permisos.puedeVerConfidencial(req.usuario, f.proyecto_id)) throw Object.assign(new Error('Documento confidencial: solo lo ven el Administrador y el equipo del proyecto'), { estado: 403 });
+      const archivo = almacen.rutaAbsoluta(f);
+      if (!archivo) throw Object.assign(new Error('Ubicación del documento no válida'), { estado: 404 });
+      const enLinea = /^(application\/pdf|image\/)/.test(f.tipo_mime) && req.query.descargar !== '1';
+      res.set({ 'Content-Type': f.tipo_mime, 'Content-Disposition': `${enLinea ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.nombre_original)}`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'" });
+      res.sendFile(archivo, (err) => { if (err && !res.headersSent) next(Object.assign(new Error('El archivo no está en disco'), { estado: 404 })); });
+    } catch (e) { next(e); }
+  });
+  app.get('/api/proyectos/jefes', seg.requiere('LECTOR'), h(() => servicio.JEFES_PROYECTO));
+  app.get('/api/proyectos/areas', seg.requiere('LECTOR'), h(() => servicio.AREAS_TECNICAS));
+  // Profesionales de un proyecto con el vencimiento de su Orden de Servicio / contrato y sus documentos
+  app.get('/api/proyectos/:id/profesionales', seg.requiere('LECTOR'), h(async (req) => {
+    const d = await servicio.datos();
+    const proy = d.proyectos.find((p) => p.proyecto_id === Number(req.params.id) && p.activo !== 0);
+    if (!proy) throw Object.assign(new Error('Proyecto no encontrado'), { estado: 404 });
+    const e = await servicio.estado({ proyecto_id: proy.proyecto_id });
+    return e.consultores.map((it) => {
+      const k = it.contrato; const v = it.vigencia;
+      const dias = v.dias_restantes;
+      const situacion = dias === null || dias === undefined ? 'SIN_PERIODO' : dias < 0 ? 'VENCIDA' : dias <= e.umbralVigencia ? 'POR_VENCER' : 'VIGENTE';
+      return {
+        consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil, estado: it.consultor.estado,
+        contrato_id: k ? k.contrato_id : null, numero: k ? k.numero : null, tipo_documento: (k && k.tipo_documento) || 'CONTRATO',
+        fin_vigencia: v.fin_vigencia, dias_restantes: dias ?? null, situacion,
+        documento: k ? contratosPdf.info(k.contrato_id) : { existe: false }, tdr: k ? tdrPdf.info(k.contrato_id) : { existe: false },
+      };
+    });
+  }));
+  // PDF de la Orden de Servicio (o contrato) y de los Términos de Referencia de cada profesional: contrato_id
+  const contratoDe = async (id) => {
+    const d = await servicio.datos();
+    const k = d.contratos.find((x) => x.contrato_id === Number(id) && x.activo !== 0 && x.activo !== false);
+    if (!k) throw Object.assign(new Error('Contrato u Orden de Servicio no encontrado'), { estado: 404 });
+    return k;
+  };
+  for (const [ruta, coleccion, rotulo] of [['documento', contratosPdf, 'documento de contratación'], ['tdr', tdrPdf, 'Términos de Referencia']]) {
+    const guardar = h(async (req) => {
+      const k = await contratoDe(req.params.id);
+      const previo = coleccion.info(k.contrato_id).existe;
+      const tipo = ruta === 'tdr' ? 'TDR' : k.tipo_documento === 'ORDEN_SERVICIO' ? 'ORDEN_SERVICIO' : 'CONTRATO';
+      await coleccion.guardar(k.contrato_id, req.body, { tipo, usuario: req.usuario.correo, motivo: `${previo ? 'Reemplazo' : 'Carga'} del PDF: ${rotulo} (${k.numero})`, origen: 'UI', consultor_id: k.consultor_id, nombre: nombreDe(req) || `${ruta}-${k.numero}.pdf` });
+      return { ok: true, ...coleccion.info(k.contrato_id) };
+    });
+    for (const metodo of ['put', 'post']) app[metodo](`/api/contratos/:id/${ruta}`, seg.requiere('EDITOR'), express.raw({ type: 'application/pdf', limit: coleccion.MAX_BYTES }), guardar);
+    app.get(`/api/contratos/:id/${ruta}`, seg.requiere('LECTOR'), (req, res, next) => {
+      contratoDe(req.params.id).then(async (k) => {
+        if (!coleccion.info(k.contrato_id).existe) throw Object.assign(new Error('Aún no se adjuntó este documento'), { estado: 404 });
+        // la Orden de Servicio / contrato es confidencial: solo el Administrador y el equipo del proyecto (D4, C10)
+        if (ruta === 'documento' && !permisos.puedeVerConfidencial(req.usuario, await proyectoDeConsultor(k.consultor_id))) throw Object.assign(new Error('Documento confidencial: solo lo ven el Administrador y el equipo del proyecto'), { estado: 403 });
+        res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${ruta}-${k.contrato_id}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'" });
+        res.sendFile(coleccion.ruta(k.contrato_id), (err) => { if (err && !res.headersSent) next(err); });
+      }).catch(next);
+    });
+  }
+  app.post('/api/proyectos/:id/profesionales/:cid/renovar', seg.requiere('EDITOR'), h((req) => servicio.ampliarOrdenServicio(req.params.cid, req.body, ctx(req))));
+  app.post('/api/proyectos/:id/profesionales', seg.requiere('EDITOR'), h((req) => servicio.registrarProfesional({ ...(req.body || {}), proyecto_id: req.params.id }, ctx(req))));
+  const RUTAS_ENTIDAD = { proyectos: 'proyecto', adendas: 'adenda', contratos: 'contrato', planes: 'plan_trabajo', 'linea-base': 'linea_base_entregable', 'controles-cambio': 'control_cambio', consultores: 'consultor' };
   for (const [ruta, entidad] of Object.entries(RUTAS_ENTIDAD)) {
-    app.patch(`/api/${ruta}/:id`, seg.requiere('EDITOR'), h((req) => servicio.actualizarEntidad(entidad, req.params.id, req.body, ctx(req))));
+    const nivel = entidad === 'proyecto' ? 'ADMIN' : 'EDITOR'; // los proyectos los crea y modifica solo la Dirección OTI (Administrador)
+    app.patch(`/api/${ruta}/:id`, seg.requiere(nivel), h((req) => servicio.actualizarEntidad(entidad, req.params.id, req.body, ctx(req))));
     if (entidad !== 'consultor' && entidad !== 'linea_base_entregable' && entidad !== 'contrato') {
-      app.post(`/api/${ruta}`, seg.requiere('EDITOR'), h((req) => servicio.crearEntidad(entidad, req.body, ctx(req))));
+      app.post(`/api/${ruta}`, seg.requiere(nivel), h((req) => servicio.crearEntidad(entidad, req.body, ctx(req))));
     }
   }
 

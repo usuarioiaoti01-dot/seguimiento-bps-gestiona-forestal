@@ -1,4 +1,4 @@
-import { api, enviarConMotivo, estado, esc, ff, ffc, fh, pct, titulo, badge, semaforo, diasBadge, holguraBadge, barraAvance, dia, puede, aviso, fallo, modal, opciones, pedirTexto, esProfesional, ETIQ } from '../util.js';
+import { api, enviarConMotivo, estado, esc, ff, ffc, fh, pct, titulo, badge, semaforo, diasBadge, holguraBadge, barraAvance, dia, puede, puedeProyecto, aviso, fallo, modal, opciones, pedirTexto, esProfesional, ETIQ } from '../util.js';
 import { abrirAsistente } from './asistente.js';
 
 const ESTADOS = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA'];
@@ -27,7 +27,7 @@ export async function vistaConsultor(el, [id], modo = '') {
   const q = estado.corte ? `?corte=${estado.corte}` : '';
   const d = await api('GET', `/consultores/${id}${q}`);
   const c = d.consultor; const v = d.vigencia; const p = d.pronostico; const k = d.contrato || {};
-  const editor = puede('EDITOR');
+  const editor = puedeProyecto(c.proyecto_id);
   titulo(c.nombres, `${esc(c.clave)} · ${esc(c.perfil || '')} · corte ${ff(d.corte)}`);
   const iniciales = c.nombres.split(' ').filter(Boolean).slice(0, 2).map((x) => x[0]).join('');
   // Vigencia contractual: solo las adendas suscritas (concluidas y firmadas). Alertas: las dos primeras altas; el resto, en ventana emergente.
