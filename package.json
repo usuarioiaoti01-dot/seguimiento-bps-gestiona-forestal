@@ -12,7 +12,8 @@
     "bd:probar": "node herramientas/bd.js probar",
     "bd:instalar": "node herramientas/bd.js instalar",
     "planes:reiniciar": "node herramientas/reiniciar_planes.js",
-    "documentos:migrar": "node herramientas/migrar_documentos.js"
+    "documentos:migrar": "node herramientas/migrar_documentos.js",
+    "test:sqlserver": "node --test test/integracion-sqlserver.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

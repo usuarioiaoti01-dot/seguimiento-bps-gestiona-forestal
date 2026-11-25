@@ -26,6 +26,7 @@ const { crearSupervision } = require('./supervision');
 const { construirPortafolio, totalesMonto } = require('./motor/portafolio');
 const { crearCierre } = require('./cierre');
 const { construirReporte, generarPdfReporte, rangoMes } = require('./reporte-mensual');
+const { construirExpediente } = require('./documentos/expediente');
 
 async function crearApp() {
   // El repositorio va envuelto: toda escritura respeta el alcance por proyecto del usuario (permisos.js, db/15)
@@ -473,6 +474,16 @@ async function crearApp() {
       res.sendFile(archivo, (err) => { if (err && !res.headersSent) next(Object.assign(new Error('El archivo no está en disco'), { estado: 404 })); });
     } catch (e) { next(e); }
   });
+  // Expediente del proyecto (§8 del plan): todos sus documentos por tipo, con lo que respalda cada uno y su versión
+  app.get('/api/proyectos/:id/expediente', seg.requiere('EDITOR'), h(async (req) => {
+    const d = await servicio.datos();
+    const proy = d.proyectos.find((p) => p.proyecto_id === Number(req.params.id) && p.activo !== 0 && p.activo !== false);
+    if (!proy) throw Object.assign(new Error('Proyecto no encontrado'), { estado: 404 });
+    const docs = almacen.deProyecto(proy.proyecto_id);
+    const partes = docs.some((f) => f.entidad === 'parte_diario') ? await repo.listarPartes({ proyecto_id: proy.proyecto_id, limite: 1000 }) : [];
+    const r = construirExpediente({ documentos: docs, datos: d, proyecto_id: proy.proyecto_id, partes, verConfidencial: permisos.puedeVerConfidencial(req.usuario, proy.proyecto_id) });
+    return { proyecto: { proyecto_id: proy.proyecto_id, codigo: proy.codigo, nombre: proy.nombre }, ...r };
+  }));
   app.get('/api/proyectos/jefes', seg.requiere('LECTOR'), h(() => servicio.JEFES_PROYECTO));
   app.get('/api/proyectos/areas', seg.requiere('LECTOR'), h(() => servicio.AREAS_TECNICAS));
   // Profesionales de un proyecto con el vencimiento de su Orden de Servicio / contrato y sus documentos

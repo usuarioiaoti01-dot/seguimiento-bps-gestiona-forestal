@@ -89,6 +89,8 @@ function crearAlmacen({ repo, raices, resolverProyecto = async () => null }) {
   const listar = (tipo, entidad, entidadId) => [...(indice.get(clave(tipo, entidad, entidadId)) || [])];
   const buscar = (id) => porId.get(Number(id)) || null;
   /** Todos los activos de una entidad (cualquier tipo), del más reciente al más antiguo. */
+  /** Todos los documentos activos de un proyecto (para el expediente). */
+  const deProyecto = (proyectoId) => [...porId.values()].filter((f) => Number(f.proyecto_id) === Number(proyectoId));
   const deEntidad = (entidad, entidadId) => [...porId.values()].filter((f) => f.entidad === entidad && String(f.entidad_id ?? '') === String(entidadId ?? '')).sort((a, b) => b.documento_id - a.documento_id);
 
   async function proyectoDe(e) {
@@ -211,7 +213,7 @@ function crearAlmacen({ repo, raices, resolverProyecto = async () => null }) {
     };
   }
 
-  return { MAX_BYTES, TIPOS, cargar, guardar, registrarExistente, retirar, vigente, listar, buscar, deEntidad, porUbicacion, rutaAbsoluta, coleccion };
+  return { MAX_BYTES, TIPOS, cargar, guardar, registrarExistente, retirar, vigente, listar, buscar, deEntidad, deProyecto, porUbicacion, rutaAbsoluta, coleccion };
 }
 
 module.exports = { crearAlmacen, TIPOS, RAICES, detectarFormato, MAX_BYTES };

@@ -12,6 +12,7 @@ import { vistaProyectos, cargarProyectos, fijarProyecto, pintarSelectorProyecto 
 import { vistaActualizarArchivo } from './vistas/actualizar-archivo.js';
 import { vistaSupervision } from './vistas/supervision.js';
 import { vistaPortafolio } from './vistas/portafolio.js';
+import { vistaExpediente } from './vistas/expediente.js';
 import { montarAsistente } from './vistas/asistente.js';
 
 const raiz = document.getElementById('app');
@@ -28,6 +29,7 @@ const RUTAS = [
   { patron: /^#\/proyectos$/, vista: vistaProyectos, menu: 'proyectos' },
   { patron: /^#\/actualizar-archivo$/, vista: vistaActualizarArchivo, menu: 'actualizar' },
   { patron: /^#\/supervision$/, vista: vistaSupervision, menu: 'supervision' },
+  { patron: /^#\/expediente$/, vista: vistaExpediente, menu: 'expediente' }, // todos los documentos del proyecto (§8 del plan)
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },
   { patron: /^#\/configuracion$/, vista: vistaConfiguracion, menu: 'config' },
 ];
@@ -75,9 +77,10 @@ async function pantallaCambioClave(obligatorio = true) {
 const OPCIONES_PROYECTO = [
   ['#/plazos', 'tablero', 'Adendas - Plazos', 'tablero'], ['#/adendas', 'adendas', 'Contratos y adendas', 'adendas'], ['#/formular', 'formular', 'Formular Plan de Trabajo', 'adendas'],
   ['#/seguimiento', 'seguimiento', 'Seguimiento Actividades', 'seguimiento'], ['#/supervision', 'supervision', 'Supervisión diaria', 'seguimiento'], ['#/linea-base', 'lb', 'Línea base 2026', 'lb'], ['#/actualizar-archivo', 'actualizar', 'Actualizar Desde Archivo', 'seguimiento'],
+  ['#/expediente', 'expediente', 'Expediente', 'adendas'],
 ];
 /** Las opciones dependen de lo que el proyecto maneja (profesionales, adendas, línea base). */
-const opcionesDe = (p) => (p.con_profesionales === 0 ? [] : OPCIONES_PROYECTO
+const opcionesDe = (p) => (p.con_profesionales === 0 ? OPCIONES_PROYECTO.filter(([, menu]) => menu === 'expediente') : OPCIONES_PROYECTO
   .filter(([, menu]) => (menu !== 'actualizar' || p.escribe) && !(menu === 'adendas' && p.con_adendas === 0) && !(menu === 'lb' && p.con_linea_base === 0))
   .map((o) => (o[1] === 'tablero' && p.con_adendas === 0 ? [o[0], o[1], 'Plazos - Vencimientos', o[3]] : o)));
 const abiertos = new Set(['grupo']); // grupos desplegados del menú (se conserva al repintar)

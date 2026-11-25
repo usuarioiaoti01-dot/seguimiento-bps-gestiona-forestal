@@ -53,8 +53,10 @@ UPDATE sgf.proyecto
        modificado_por = N'db/16'
  WHERE modalidad IS NULL;
 GO
-IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('sgf.proyecto') AND name = 'modalidad' AND is_nullable = 1)
-    ALTER TABLE sgf.proyecto ALTER COLUMN modalidad VARCHAR(20) NOT NULL;
+-- modalidad queda NULL-able: sgf.proyecto es temporal y el UPDATE anterior deja en proyecto_historial filas con
+-- modalidad NULL, por lo que ALTER COLUMN ... NOT NULL falla (también falló en producción el 25/11/2026, donde la
+-- columna quedó NULL-able). La exigen el DEFAULT, la restricción CK_proyecto_modalidad y la aplicación.
+PRINT 'db/16: modalidad se mantiene NULL-able (ver comentario).';
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_proyecto_modalidad')
     ALTER TABLE sgf.proyecto ADD CONSTRAINT DF_proyecto_modalidad DEFAULT ('ORDEN_SERVICIO') FOR modalidad;
