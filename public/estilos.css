@@ -125,7 +125,7 @@ td.c, th.c { text-align: center; } td.d, th.d { text-align: right; }
 .b-gris { background: var(--gris-suave); color: var(--texto-2); }
 .b-marca { background: var(--marca-suave); color: var(--marca); }
 .punto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
-.p-VERDE { background: var(--verde); } .p-AMBAR { background: var(--ambar); } .p-ROJO { background: var(--rojo); } .p-GRIS { background: var(--gris); }
+.p-VERDE { background: var(--verde); } .p-AMBAR { background: var(--ambar); } .p-ROJO { background: var(--rojo); } .p-GRIS { background: var(--gris); } .p-AZUL { background: var(--azul); }
 .critica { color: var(--rojo); font-weight: 700; }
 
 /* ---------- barras de avance */

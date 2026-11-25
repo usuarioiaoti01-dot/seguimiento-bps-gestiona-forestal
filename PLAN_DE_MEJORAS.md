@@ -405,6 +405,8 @@ Hecho (127 pruebas; sin scripts de base de datos nuevos). Revisión de código d
   el TDR con IA» en el registro de la OS: precarga objeto, perfil, plazo y entregables (con % de pago) para que el usuario
   los revise; no escribe nada y no envía datos personales. Requiere `ANTHROPIC_API_KEY` y la salida a api.anthropic.com.
 
+Ficha del profesional con su Orden de Servicio y entregables (D3), 25/11/2026: la ven el equipo y el PROFESIONAL con cuenta (sin el monto); los periodos de la OS ya no se rotulan como adendas.
+
 Expediente del proyecto (§8, pestaña «Documentos»), 25/11/2026: opción «Expediente» en cada proyecto con todos sus documentos por tipo, a qué pertenece cada uno, versión vigente y anteriores, y la regla de confidencialidad (`test/expediente.test.js`).
 
 Integración con SQL Server real (25/11/2026): `test/integracion-sqlserver.test.js` recorre registro, corrección de entregables, notificación y su corrección, plan aprobado, partes con evidencia y rectificación, ciclo de entregables, culminación, cierre, anulación, resolución, ampliación, tablero, CSV y reporte PDF; verifica la reversión de transacciones, el 403 dentro de la transacción y operaciones simultáneas (200 o 409, sin bloqueos). Pasa contra una base limpia instalada con `bd:instalar`.

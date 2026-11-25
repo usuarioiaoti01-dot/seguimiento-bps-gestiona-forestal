@@ -1,5 +1,6 @@
 import { api, enviarConMotivo, estado, esc, ff, ffc, fh, pct, titulo, badge, semaforo, diasBadge, holguraBadge, barraAvance, dia, puede, puedeProyecto, aviso, fallo, modal, opciones, pedirTexto, esProfesional, ETIQ } from '../util.js';
 import { abrirAsistente } from './asistente.js';
+import { soles } from './orden-servicio.js';
 
 const ESTADOS = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA'];
 const CLASIF = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
@@ -36,6 +37,7 @@ export async function vistaConsultor(el, [id], modo = '') {
   // El plazo para subsanar un plan observado va siempre primero; luego las altas (en total, dos en la tarjeta)
   const altasVisibles = [...d.alertas.filter((a) => a.codigo === 'PLAN_OBSERVADO'), ...d.alertas.filter((a) => a.prioridad === 'ALTA' && a.codigo !== 'PLAN_OBSERVADO')].slice(0, 2);
   const desvioPlan = p && p.fin_probable && p.fin_plan ? dia(p.fin_probable) - dia(p.fin_plan) : null;
+  const porOS = k.tipo_documento === 'ORDEN_SERVICIO';
 
   el.innerHTML = `
   <div class="tarjeta"><div class="cuerpo ficha-cab">
@@ -52,12 +54,12 @@ export async function vistaConsultor(el, [id], modo = '') {
     <div class="tarjeta"><div class="cab"><h2>VIGENCIA CONTRACTUAL</h2>${editor ? '<button class="btn peq prim" id="b-adenda">Registrar adenda</button>' : ''}</div>
       <div class="cuerpo" style="display:grid;gap:14px">
         <div class="datos">
-          <div class="dato"><small>Adenda vigente</small><b>${v.adenda_vigente ? `N.° ${String(v.adenda_vigente.numero).padStart(2, '0')}` : '—'}</b></div>
+          <div class="dato"><small>${porOS ? 'Periodo vigente' : 'Adenda vigente'}</small><b>${v.adenda_vigente ? (v.adenda_vigente.tipo_periodo === 'ORIGINAL' ? 'Original' : `N.° ${String(v.adenda_vigente.numero).padStart(2, '0')}`) : '—'}</b></div>
           <div class="dato"><small>Fin de vigencia</small><b class="num">${ff(v.fin_vigencia)}</b></div>
           <div class="dato"><small>Días restantes</small><b>${diasBadge(v.dias_restantes)}</b></div>
         </div>
         <div class="adendas">${suscritas.map((a) => `<div class="adenda ${a.estado}" data-adenda="${a.adenda_id}" title="Clic para ver o editar">
-          <div><b>Adenda N.° ${String(a.numero).padStart(2, '0')}</b> ${badge(a.estado)}</div>
+          <div><b>${a.tipo_periodo === 'ORIGINAL' ? 'Periodo original' : a.tipo_periodo === 'AMPLIACION' ? `Ampliación N.° ${String(a.numero).padStart(2, '0')}` : `Adenda N.° ${String(a.numero).padStart(2, '0')}`}</b> ${badge(a.estado)}</div>
           <div class="num mut">${ff(a.fecha_inicio)} – ${ff(a.fecha_fin)}</div>
           ${a.plazo_dias ? `<div class="mut2">${a.plazo_dias} días${a.plazo_solicitado_dias && a.plazo_solicitado_dias !== a.plazo_dias ? ` (solicitados ${a.plazo_solicitado_dias})` : ''}</div>` : ''}
           <div class="mut2">${esc(a.documento_ref || (a.estado === 'CONCLUIDA' ? 'Adenda concluida' : 'Sin documento'))}</div></div>`).join('') || '<span class="mut">Sin adendas suscritas</span>'}</div>
@@ -97,8 +99,49 @@ export async function vistaConsultor(el, [id], modo = '') {
   </div>
 `;
 
+  const os = ordenServicio(d);
+  if (os) el.querySelector('.rejilla-2').insertAdjacentHTML('afterend', os);
   if (conPlan) pintarActividades(el.querySelector('#tabla-act'), d, editor);
   conectar(el, d, editor);
+}
+
+const ESTADO_OS = { REGISTRADA: ['Registrada, sin notificar', 'b-ambar'], EN_EJECUCION: ['En ejecución', 'b-azul'], CULMINADA: ['Culminada', 'b-verde'], RESUELTA: ['Resuelta', 'b-rojo'], ANULADA: ['Anulada', 'b-gris'] };
+const ESTADO_ENT = { PENDIENTE: ['Pendiente', 'b-gris'], PRESENTADO: ['Presentado', 'b-azul'], EN_REVISION: ['En revisión', 'b-azul'], OBSERVADO: ['Observado', 'b-rojo'], SUBSANADO: ['Subsanado', 'b-azul'], CONFORME: ['Conforme', 'b-verde'], ANULADO: ['Anulado', 'b-gris'] };
+const etiqueta = (mapa, k) => { const [t, c] = mapa[k] || [k || '—', 'b-gris']; return `<span class="badge ${c}">${esc(t)}</span>`; };
+const MEDIOS = { CORREO: 'correo electrónico', PRESENCIAL: 'entrega presencial', MESA_PARTES: 'mesa de partes', SISTEMA: 'sistema de trámite' }; // server/modalidades.js
+
+/**
+ * Orden de Servicio vigente y sus entregables (decisión D3: el profesional con cuenta ve sus entregables y su avance).
+ * Solo muestra lo que calcula el servidor (semáforo, días, avance); el monto llega solo a quien puede verlo.
+ */
+function ordenServicio(d) {
+  const lista = (d.contrataciones || []).filter((x) => x.tipo_documento === 'ORDEN_SERVICIO');
+  if (!lista.length) return '';
+  const k = d.contrato && d.contrato.tipo_documento === 'ORDEN_SERVICIO' ? d.contrato : lista[lista.length - 1];
+  const ents = (d.entregables || []).filter((e) => e.contrato_id === k.contrato_id);
+  const anteriores = lista.filter((x) => x.contrato_id !== k.contrato_id).reverse();
+  const plazo = (e) => (e.fecha_limite ? `${ff(e.fecha_limite)}${e.estado === 'PENDIENTE' && e.dias_para_vencer !== null ? `<small>${e.dias_para_vencer < 0 ? `vencido hace ${-e.dias_para_vencer} d` : e.dias_para_vencer === 0 ? 'vence hoy' : `faltan ${e.dias_para_vencer} d`}</small>` : ''}` : '<span class="mut2">al notificar</span>');
+  const hechos = (e) => [e.fecha_presentacion && `Presentado ${ff(e.fecha_presentacion)}${e.dias_atraso ? ` (${e.dias_atraso} d de atraso)` : ''}`, e.fecha_observacion && e.estado === 'OBSERVADO' && `Observado ${ff(e.fecha_observacion)}: subsanar hasta ${ff(e.fecha_limite_subsanacion)}`,
+    e.fecha_subsanacion && `Subsanado ${ff(e.fecha_subsanacion)}`, e.fecha_conformidad && `Conforme ${ff(e.fecha_conformidad)}${e.conformidad_ref ? ` · ${e.conformidad_ref}` : ''}`].filter(Boolean).map((t) => `<small>${esc(t)}</small>`).join('');
+  return `<div class="tarjeta" id="t-os">
+    <div class="cab"><h2>ORDEN DE SERVICIO Y ENTREGABLES</h2>${etiqueta(ESTADO_OS, k.estado_contratacion)}</div>
+    <div class="cuerpo"><div class="datos">
+      <div class="dato"><small>Orden de Servicio</small><b>N.° ${esc(k.numero)}</b></div>
+      <div class="dato"><small>Notificación</small><b class="num">${k.fecha_notificacion ? `${ff(k.fecha_notificacion)}` : 'Pendiente'}</b>${k.medio_notificacion ? `<small>${esc(MEDIOS[k.medio_notificacion] || k.medio_notificacion)}</small>` : ''}</div>
+      <div class="dato"><small>Plazo</small><b class="num">${k.plazo_dias ? `${k.plazo_dias} días` : '—'}</b><small>calendario, desde el día siguiente de la notificación</small></div>
+      <div class="dato"><small>Inicio – fin</small><b class="num">${k.fecha_inicio ? `${ff(k.fecha_inicio)} – ${ff(k.fecha_fin)}` : '—'}</b></div>
+      ${k.monto !== undefined && k.monto !== null ? `<div class="dato"><small>Monto (confidencial)</small><b class="num">${soles(k.monto)}</b></div>` : ''}
+    </div></div>
+    <div class="cuerpo sin tabla-env"><table class="tabla-entregables"><thead><tr><th>N.°</th><th>Entregable</th><th>Plazo</th><th>Fecha límite</th><th>% pago</th><th>Estado</th><th>Situación</th><th>Avance</th></tr></thead><tbody>
+      ${ents.map((e) => `<tr>
+        <td class="num">${e.numero}</td><td class="desc">${esc(e.nombre)}${e.actividades ? `<small>${e.actividades} actividad(es) del plan</small>` : ''}</td>
+        <td class="num">${e.plazo_dias} d</td><td class="num">${plazo(e)}</td><td class="num">${e.porcentaje_pago !== null && e.porcentaje_pago !== undefined ? pct(e.porcentaje_pago) : '—'}</td>
+        <td>${etiqueta(ESTADO_ENT, e.estado)}${hechos(e)}</td>
+        <td><span class="punto p-${esc(e.semaforo || 'GRIS')}"></span> <span class="mut2">${esc(e.motivo || '')}</span></td>
+        <td class="num">${pct(e.avance)}</td></tr>`).join('') || '<tr><td colspan="8" class="vacio">Sin entregables registrados</td></tr>'}
+    </tbody></table></div>
+    ${anteriores.length ? `<div class="cuerpo mut2">Órdenes de Servicio anteriores: ${anteriores.map((x) => `N.° ${esc(x.numero)} (${esc((ESTADO_OS[x.estado_contratacion] || [x.estado_contratacion])[0].toLowerCase())}${x.fecha_inicio ? `, ${ff(x.fecha_inicio)} – ${ff(x.fecha_culminacion || x.fecha_fin)}` : ''})`).join(' · ')}</div>` : ''}
+  </div>`;
 }
 
 function evolucion(h) {

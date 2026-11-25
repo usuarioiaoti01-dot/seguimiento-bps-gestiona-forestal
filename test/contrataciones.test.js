@@ -191,6 +191,15 @@ test('Orden de Servicio: registro con TDR, OS, monto y entregables; notificació
   const docs = (await ana.c('GET', `/api/documentos?entidad=contrato&entidad_id=${kid}`)).cuerpo;
   assert.deepEqual(docs.map((d) => d.tipo).sort(), ['NOTIFICACION', 'ORDEN_SERVICIO', 'TDR']);
   assert.ok(docs.find((d) => d.tipo === 'NOTIFICACION').confidencial);
+  // D3: el profesional con cuenta ve en su ficha su OS y sus entregables, sin el monto; no accede a la gestión
+  const cuenta = await admin('POST', '/api/usuarios', { correo: 'mqr.os@serfor.gob.pe', nombre: 'María Quispe Rojas', rol: 'PROFESIONAL', consultor_id: cid });
+  const prof = cliente(); await prof.entrar('mqr.os@serfor.gob.pe', cuenta.cuerpo.clave_temporal);
+  const ficha = (await prof('GET', `/api/consultores/${cid}`)).cuerpo;
+  assert.equal(ficha.entregables.length, 2);
+  assert.ok(ficha.entregables.every((x) => x.fecha_limite && x.semaforo), 'con fecha límite y semáforo calculados en el servidor');
+  assert.equal(ficha.contrato.estado_contratacion, 'EN_EJECUCION');
+  assert.ok(!('monto' in ficha.contrato) && ficha.contrataciones.every((x) => !('monto' in x)), 'sin el monto (D4)');
+  assert.equal((await prof('GET', `/api/contratos/${kid}/entregables`)).estado, 403);
   assert.equal((await ana.c('POST', `/api/contratos/${kid}/entregables`, { entregables: [{ nombre: 'Otro', plazo_dias: 60 }] })).estado, 409, 'notificada, los entregables ya no se cambian así');
   // el periodo ORIGINAL de la OS no se edita como una adenda
   const original = (await ana.c('GET', `/api/adendas?proyecto_id=${pid}`)).cuerpo.find((a) => a.contrato_id === kid && a.tipo_periodo === 'ORIGINAL');
