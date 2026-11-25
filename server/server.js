@@ -258,7 +258,7 @@ async function crearApp() {
     return {
       corte: e.corte, metodo: e.metodo, indicadores: e.indicadores, alertas: e.alertas, resumen_entregables: e.entregables,
       consultores: e.consultores.map((it) => ({
-        consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil,
+        consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil, proyecto_id: it.consultor.proyecto_id ?? null,
         contrato: it.contrato && it.contrato.numero, expediente: it.contrato && it.contrato.expediente,
         vigencia: { ...it.vigencia },
         historial_adendas: it.adendas.filter((a) => a.estado === 'CONCLUIDA').sort((a, b) => a.numero - b.numero)
@@ -395,7 +395,7 @@ async function crearApp() {
     }).sort((x, y) => (x.clave || '').localeCompare(y.clave || '') || x.numero - y.numero);
   }));
   app.get('/api/bitacora', seg.requiere('LECTOR'), h(async (req) => {
-    const filas = await repo.listarBitacora({ consultor_id: req.query.consultor_id, entidad: req.query.entidad, entidad_id: req.query.entidad_id, limite: req.query.limite });
+    const filas = await repo.listarBitacora({ consultor_id: req.query.consultor_id, entidad: req.query.entidad, entidad_id: req.query.entidad_id, proyecto_id: req.query.proyecto_id, limite: req.query.limite });
     const d = await servicio.datos();
     const proyectoDe = new Map(d.consultores.map((c) => [c.consultor_id, c.proyecto_id]));
     return servicio.sanearBitacora(filas, { verPersonales: req.usuario.rol === 'ADMIN', verMonto: (f) => permisos.puedeVerConfidencial(req.usuario, f.consultor_id ? proyectoDe.get(f.consultor_id) ?? null : null) });

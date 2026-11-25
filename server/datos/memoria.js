@@ -212,9 +212,18 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
 
     async registrarBitacora(e) { const f = bitacora(e); guardar(); return f; },
 
-    async listarBitacora({ consultor_id, entidad, entidad_id, limite = 200 } = {}) {
+    /** proyecto_id: registros de sus profesionales, de la ficha del proyecto, de su equipo y de sus documentos. */
+    async listarBitacora({ consultor_id, entidad, entidad_id, proyecto_id, limite = 200 } = {}) {
+      const pid = proyecto_id ? Number(proyecto_id) : null;
+      const del = pid && {
+        consultores: new Set((db.consultores || []).filter((c) => c.proyecto_id === pid).map((c) => c.consultor_id)),
+        miembros: new Set((db.miembros || []).filter((m) => m.proyecto_id === pid).map((m) => m.miembro_id)),
+        documentos: new Set((db.documentos || []).filter((f) => Number(f.proyecto_id) === pid).map((f) => f.documento_id)),
+      };
+      const enProyecto = (b) => !pid || del.consultores.has(b.consultor_id) || (b.entidad === 'consultor' && del.consultores.has(b.entidad_id)) || (b.entidad === 'proyecto' && b.entidad_id === pid)
+        || (b.entidad === 'proyecto_miembro' && del.miembros.has(b.entidad_id)) || (b.entidad === 'documento' && del.documentos.has(b.entidad_id));
       return copia(db.bitacora
-        .filter((b) => (!consultor_id || b.consultor_id === Number(consultor_id)) && (!entidad || b.entidad === entidad) && (!entidad_id || b.entidad_id === Number(entidad_id)))
+        .filter((b) => (!consultor_id || b.consultor_id === Number(consultor_id)) && (!entidad || b.entidad === entidad) && (!entidad_id || b.entidad_id === Number(entidad_id)) && enProyecto(b))
         .sort((a, b) => b.bitacora_id - a.bitacora_id).slice(0, limite));
     },
 

@@ -88,5 +88,16 @@ test('API del expediente: el equipo ve todo; un Jefe ajeno, sin los confidencial
     const desc = await fetch(`${base}/api/documentos/${os.documento_id}/archivo`, { headers: { 'X-SGF': '1' } });
     assert.equal(desc.status, 401, 'sin sesión no se descarga');
     assert.equal((await admin('GET', '/api/proyectos/999999/expediente')).estado, 404);
+
+    // bitácora del proyecto: sus profesionales, la ficha, el equipo y los documentos; nada de otros proyectos
+    const bit = (await admin('GET', `/api/bitacora?proyecto_id=${pid}&limite=1000`)).cuerpo;
+    const entidades = new Set(bit.map((b) => b.entidad));
+    for (const x of ['proyecto', 'proyecto_miembro', 'consultor', 'contrato', 'entregable_servicio', 'adenda', 'documento']) assert.ok(entidades.has(x), `bitácora de ${x}`);
+    const cid = reg.cuerpo.consultor.consultor_id;
+    assert.ok(bit.every((b) => b.consultor_id === cid || b.consultor_id === null || b.consultor_id === undefined), 'solo el profesional de este proyecto');
+    const gf = (await admin('GET', '/api/proyectos')).cuerpo.find((x) => x.codigo === 'GF2026');
+    const bitGf = (await admin('GET', `/api/bitacora?proyecto_id=${gf.proyecto_id}&limite=1000`)).cuerpo;
+    assert.ok(!bitGf.some((b) => b.consultor_id === cid || (b.entidad === 'proyecto' && b.entidad_id === pid)), 'GF2026 no trae registros del otro proyecto');
+    assert.ok((await admin('GET', '/api/bitacora?limite=1000')).cuerpo.length >= bit.length + bitGf.length - 5, 'sin filtro trae todo');
   } finally { servidor.close(); }
 });

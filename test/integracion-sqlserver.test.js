@@ -226,6 +226,10 @@ test('flujo completo de la Orden de Servicio contra SQL Server', opciones, async
   const bit = (await admin('GET', `/api/bitacora?consultor_id=${cid}&limite=500`)).cuerpo;
   for (const entidad of ['consultor', 'contrato', 'entregable_servicio', 'adenda', 'parte_diario', 'parte_diario_item', 'actividad']) assert.ok(bit.some((b) => b.entidad === entidad), `bitácora de ${entidad}`);
   assert.ok(!/15000\.5/.test(JSON.stringify((await beto.c('GET', `/api/bitacora?consultor_id=${cid}&limite=500`)).cuerpo)), 'un Jefe ajeno no ve el monto');
+  // bitácora filtrada por proyecto (subconsultas en SQL Server): incluye la ficha, el equipo y los documentos del proyecto
+  const bp = (await admin('GET', `/api/bitacora?proyecto_id=${pid}&limite=1000`)).cuerpo;
+  for (const entidad of ['proyecto', 'proyecto_miembro', 'documento', 'contrato', 'parte_diario']) assert.ok(bp.some((b) => b.entidad === entidad), `bitácora del proyecto: ${entidad}`);
+  assert.ok(bp.every((b) => !b.consultor_id || b.consultor_id === cid), 'solo su profesional');
 });
 
 test('anulación, resolución, tablero general y reporte mensual contra SQL Server', opciones, async () => {

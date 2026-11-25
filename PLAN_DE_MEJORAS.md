@@ -405,6 +405,8 @@ Hecho (127 pruebas; sin scripts de base de datos nuevos). Revisión de código d
   el TDR con IA» en el registro de la OS: precarga objeto, perfil, plazo y entregables (con % de pago) para que el usuario
   los revise; no escribe nada y no envía datos personales. Requiere `ANTHROPIC_API_KEY` y la salida a api.anthropic.com.
 
+Bitácora por proyecto (§8, pestaña «Bitácora»), 25/11/2026: filtro por proyecto en la API y en la vista, y opción «Bitácora» en el menú de cada proyecto. Con esto la vista por proyecto del §8 queda completa.
+
 Ficha del profesional con su Orden de Servicio y entregables (D3), 25/11/2026: la ven el equipo y el PROFESIONAL con cuenta (sin el monto); los periodos de la OS ya no se rotulan como adendas.
 
 Expediente del proyecto (§8, pestaña «Documentos»), 25/11/2026: opción «Expediente» en cada proyecto con todos sus documentos por tipo, a qué pertenece cada uno, versión vigente y anteriores, y la regla de confidencialidad (`test/expediente.test.js`).

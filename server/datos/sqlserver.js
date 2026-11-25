@@ -193,14 +193,21 @@ async function crearRepositorioSqlServer(config) {
 
     async registrarBitacora(e) { await insertarBitacora(e); },
 
-    async listarBitacora({ consultor_id, entidad, entidad_id, limite = 200 } = {}) {
+    /** proyecto_id: registros de sus profesionales, de la ficha del proyecto, de su equipo y de sus documentos. */
+    async listarBitacora({ consultor_id, entidad, entidad_id, proyecto_id, limite = 200 } = {}) {
       const r = await consulta(
         `SELECT TOP (@limite) * FROM sgf.bitacora
          WHERE (@consultor_id IS NULL OR consultor_id = @consultor_id)
            AND (@entidad IS NULL OR entidad = @entidad)
            AND (@entidad_id IS NULL OR entidad_id = @entidad_id)
+           AND (@proyecto_id IS NULL
+                OR consultor_id IN (SELECT consultor_id FROM sgf.consultor WHERE proyecto_id = @proyecto_id)
+                OR (entidad = 'consultor' AND entidad_id IN (SELECT consultor_id FROM sgf.consultor WHERE proyecto_id = @proyecto_id))
+                OR (entidad = 'proyecto' AND entidad_id = @proyecto_id)
+                OR (entidad = 'proyecto_miembro' AND entidad_id IN (SELECT miembro_id FROM sgf.proyecto_miembro WHERE proyecto_id = @proyecto_id))
+                OR (entidad = 'documento' AND entidad_id IN (SELECT documento_id FROM sgf.documento WHERE proyecto_id = @proyecto_id)))
          ORDER BY bitacora_id DESC;`,
-        { limite: Math.min(Number(limite) || 200, 1000), consultor_id: consultor_id ? Number(consultor_id) : null, entidad: entidad || null, entidad_id: entidad_id ? Number(entidad_id) : null });
+        { limite: Math.min(Number(limite) || 200, 1000), consultor_id: consultor_id ? Number(consultor_id) : null, entidad: entidad || null, entidad_id: entidad_id ? Number(entidad_id) : null, proyecto_id: proyecto_id ? Number(proyecto_id) : null });
       return normalizarTodas(r.recordset, SIN_FECHAS);
     },
 
