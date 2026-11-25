@@ -34,7 +34,7 @@ Usuarios: Director de TI (perfil **ADMIN**, «Dirección OTI»), Jefes de Proyec
 | **Solo en el equipo local, sin commit** | Todo lo de «Proyectos»: `db/12`, `db/13`, menú lateral por proyecto, características del proyecto, Orden de Servicio y TDR, registro del plan desde documento, nueva denominación, este handoff, `PLAN_DE_MEJORAS.md` y la **Etapa 1** (24/11/2026): `db/14` almacén documental, `db/15` equipo por proyecto y permisos, transacciones compuestas, migración de documentos. |
 
 - Repositorio: `https://github.com/usuarioiaoti01-dot/seguimiento-bps-gestiona-forestal` (cuenta institucional de la OTI; público por decisión del usuario). 16 commits en `main`.
-- Pruebas: **136** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
+- Pruebas: **138** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
 - Modo de trabajo acordado: el usuario prueba en `localhost:3080`; **solo se sube a GitHub cuando dice «sube los cambios al gh»**; no se pide aprobación de un plan antes de ejecutar (prevalece sobre `CLAUDE.md` §5). Los cambios llegan a producción con `git pull` + reinicio del servicio.
 
 ---
@@ -281,7 +281,7 @@ Regla: todo cambio de estructura = nuevo script `NN_descripcion.sql` + actualiza
 
 - **Operativo:** abrir `api.anthropic.com:443` y `github.com:443` desde 10.6.1.77; respaldo de `SGF_SEGUIMIENTO` y de `C:\datos\seguimiento`; redirección HTTP → HTTPS; usuario SQL solo con rol `sgf_app`; anular las adendas de prueba en producción; borrar `C:\temp\verificar-ia.js` del servidor; avisar al administrador del servidor de la corrección del WinSW.
 - **Datos por verificar** (`CLAUDE.md` §6): contratos 026/029 ↔ 057/064 (K. Atuncar, J. Correa); fecha de suscripción de la Adenda 01 (04–05/06/2026); contrato 123 (J. Montalbán: 02/10 o 31/10); plazos de la Adenda 02 de A. Sosa y E. Barreto (90 días frente a 180 solicitados); registrar los planes de A. Sosa y J. Montalbán (adjuntos solo en Gmail).
-- **Producto:** inicio de sesión con Google Workspace (SSO), reporte mensual en PDF/correo para Gerencia, exportación del informe situacional, vista consolidada «Todos los proyectos» si se necesita, línea base propia por proyecto, decidir si los PDF van a SQL Server, S1–S5 (barras semanales) de la plantilla Word, legibilidad de las subactividades en la Bitácora.
+- **Producto:** inicio de sesión con Google Workspace (SSO), activar en producción el envío del reporte mensual por correo, exportación del informe situacional, vista consolidada «Todos los proyectos» si se necesita, línea base propia por proyecto, decidir si los PDF van a SQL Server, S1–S5 (barras semanales) de la plantilla Word, legibilidad de las subactividades en la Bitácora.
 
 ## 18. Decisiones y límites que conviene conocer
 

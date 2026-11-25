@@ -140,6 +140,12 @@ Desde el commit que lo agrega, la aplicación usa la dependencia `nodemailer`: a
 5. Reiniciar el servicio y, como Administrador, en **Configuración → Correo diario de alertas**: «Probar conexión», luego
    «Enviarme una prueba» y revisar la «Vista previa».
 6. Si todo está bien, poner `ALERTAS_CORREO=true` y reiniciar. Cada envío queda en la Bitácora (entidad `correo_alertas`).
+7. **Reporte mensual para Gerencia** (opcional, misma cuenta): en el `.env`, `REPORTE_MENSUAL_PARA` (destinatarios
+   separados por coma), `REPORTE_MENSUAL_DIA_HABIL` (por defecto 1), `REPORTE_MENSUAL_HORA` (por defecto 08:00) y
+   `REPORTE_MENSUAL_MONTOS=false` salvo decisión expresa de la Dirección. Reiniciar, ir a **Configuración → Reporte mensual
+   para Gerencia por correo**, «Ver PDF» y «Enviarme una prueba»; luego `REPORTE_MENSUAL_CORREO=true` y reiniciar. Se envía una
+   vez por mes (el del mes anterior); si el servidor estuvo apagado ese día, en la siguiente revisión. Cada envío queda en la
+   Bitácora (entidad `correo_reporte`).
 
 ---
 

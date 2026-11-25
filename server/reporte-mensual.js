@@ -150,4 +150,39 @@ function generarPdfReporte(r) {
   });
 }
 
-module.exports = { construirReporte, generarPdfReporte, rangoMes };
+/** Mes anterior al de la fecha AAAA-MM-DD (el que se informa a inicios de mes). */
+function mesAnterior(fecha) {
+  const [a, m] = String(fecha).slice(0, 7).split('-').map(Number);
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+}
+
+/**
+ * Texto del correo que acompaña al PDF del reporte (pura). Solo cifras del resumen y el enlace: sin nombres de
+ * profesionales, sin datos personales y sin montos (los montos, si se incluyen, van únicamente en el PDF).
+ */
+function correoReporte(r, { urlAplicacion = '' } = {}) {
+  const s = r.resumen;
+  const Mes = `${r.nombre_mes[0].toUpperCase()}${r.nombre_mes.slice(1)}`;
+  const lineas = [
+    `Proyectos en curso: ${s.en_curso} (${s.semaforo.ROJO} en rojo, ${s.semaforo.AMBAR} en ámbar).`,
+    `Proyectos terminados en el año: ${s.terminados_anio}.`,
+    `Órdenes de Servicio en ejecución: ${s.os_en_ejecucion} (${s.os_sin_notificar} registradas sin notificar).`,
+    `Entregables: ${s.entregables_vencidos} vencidos sin presentar, ${s.entregables_por_vencer} por vencer, ${s.conformidades_fuera_de_plazo} con conformidad fuera de plazo.`,
+    `Supervisión: ${r.partes_mes} parte(s) diario(s) en el mes; ${s.sin_parte} proyecto(s) con supervisión atrasada.`,
+    `Alertas de prioridad alta vigentes: ${r.alertas_altas.length}.`,
+  ];
+  const asunto = `Reporte mensual de proyectos de la OTI – ${r.nombre_mes}`;
+  const intro = `Se remite el reporte mensual de proyectos de la Oficina de Tecnologías de la Información correspondiente a ${r.nombre_mes}, con corte al ${ff(r.corte)}. El detalle por proyecto, los hechos del mes y las alertas están en el PDF adjunto.`;
+  const cierre = 'Correo generado por el Seguimiento de Proyectos de la OTI – SERFOR.';
+  const texto = [`${Mes}`, '', intro, '', 'Resumen:', ...lineas.map((l) => `- ${l}`), '', urlAplicacion ? `Tablero general: ${urlAplicacion}` : null, '', cierre].filter((x) => x !== null).join('\n');
+  const e = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1d1d1b;max-width:680px">
+<h2 style="color:#1f5c44;font-size:18px;margin:0 0 8px">Reporte mensual de proyectos · ${e(Mes)}</h2>
+<p>${e(intro)}</p>
+<ul>${lineas.map((l) => `<li>${e(l)}</li>`).join('')}</ul>
+${urlAplicacion ? `<p><a href="${e(urlAplicacion)}" style="color:#1f5c44">Abrir el Tablero general</a></p>` : ''}
+<p style="color:#777;font-size:12px">${e(cierre)}</p></div>`;
+  return { asunto, texto, html, archivo: `reporte-mensual-${r.mes}.pdf` };
+}
+
+module.exports = { construirReporte, generarPdfReporte, rangoMes, mesAnterior, correoReporte };

@@ -14,7 +14,8 @@ Object.assign(process.env, {
   ADMIN_CORREO: 'admin.correo@serfor.gob.pe', ADMIN_CLAVE_INICIAL: 'ClaveCorreo2026xx', ANTHROPIC_API_KEY: '', ALERTAS_CORREO: 'false', CORREO_REMITENTE: '',
 });
 const { construirCorreos } = require('../server/alertas-correo');
-const { crearAlertasCorreo } = require('../server/correo');
+const { crearAlertasCorreo, crearReporteCorreo, diaHabilDelMes } = require('../server/correo');
+const { mesAnterior, correoReporte } = require('../server/reporte-mensual');
 const { construirEstado } = require('../server/motor/estado');
 
 /** Dos proyectos OS: el 1 con un entregable vencido; el 2 sin alertas. */
@@ -109,6 +110,83 @@ test('envío: configuración, hora, día hábil, una vez al día, registro en bi
   assert.equal(await crearAlertasCorreo({ config: { ...base, activo: false, remitente: 'alertas@serfor.gob.pe', clave: 'x' }, servicio, repo }).tocaEnviar(new Date('2026-11-23T15:00:00Z')), false);
 });
 
+/** Reporte mínimo con la forma de construirReporte (sin montos). */
+const reporteDe = (mes) => ({ mes, nombre_mes: mes === '2026-11' ? 'noviembre de 2026' : `mes ${mes}`, corte: '2026-11-30', partes_mes: 4, alertas_altas: [{ titulo: 'x' }],
+  resumen: { en_curso: 3, semaforo: { ROJO: 1, AMBAR: 1 }, terminados_anio: 2, os_en_ejecucion: 2, os_sin_notificar: 1, entregables_vencidos: 1, entregables_por_vencer: 2, conformidades_fuera_de_plazo: 0, sin_parte: 1 }, montos: null, proyectos: [] });
+
+test('reporte mensual por correo: día hábil, mes anterior y texto sin montos ni nombres', () => {
+  assert.equal(mesAnterior('2026-01-05'), '2025-12');
+  assert.equal(mesAnterior('2026-12-01'), '2026-11');
+  assert.equal(diaHabilDelMes('2026-11', 1), '2026-11-02', 'el 01/11/2026 es domingo');
+  assert.equal(diaHabilDelMes('2026-12', 1, ['2026-12-01']), '2026-12-02', 'salta el feriado');
+  assert.equal(diaHabilDelMes('2026-12', 3), '2026-12-03');
+  const c = correoReporte(reporteDe('2026-11'), { urlAplicacion: 'https://serforia.serfor.gob.pe' });
+  assert.equal(c.asunto, 'Reporte mensual de proyectos de la OTI – noviembre de 2026');
+  assert.equal(c.archivo, 'reporte-mensual-2026-11.pdf');
+  assert.match(c.texto, /Proyectos en curso: 3 \(1 en rojo, 1 en ámbar\)/);
+  assert.match(c.texto, /corte al 30\/11\/2026/);
+  assert.match(c.html, /href="https:\/\/serforia\.serfor\.gob\.pe"/);
+  assert.ok(!/S\/|monto/i.test(c.texto + c.html), 'el correo no lleva montos');
+});
+
+test('reporte mensual por correo: programación, una vez por mes, reintento si nadie lo recibió, prueba y bitácora', async () => {
+  const d = datos();
+  const bitacora = [];
+  const servicio = { datos: async () => d, estado: async () => construirEstado(d, { corte: '2026-11-23' }) };
+  const repo = {
+    listarUsuarios: async () => usuarios,
+    listarBitacora: async ({ entidad }) => bitacora.filter((b) => b.entidad === entidad).slice().reverse(),
+    registrarBitacora: async (e) => { bitacora.push({ ...e, fecha: new Date().toISOString(), cambios_json: JSON.stringify(e.cambios_json) }); },
+  };
+  const enviados = [];
+  const transporte = { sendMail: async (m) => { if (transporte.fallar) throw new Error('550 rechazado'); enviados.push(m); }, verify: async () => true };
+  const correo = crearAlertasCorreo({ config: { activo: false, hora: '07:30', soloHabiles: true, copiaAdmin: true, remitente: 'alertas@serfor.gob.pe', nombre: 'Seguimiento OTI', modo: 'clave', clave: 'x', servidor: 'smtp.gmail.com', puerto: 465, urlAplicacion: 'https://serforia.serfor.gob.pe' }, servicio, repo, crearTransporte: () => transporte });
+  const generar = async (mes) => ({ reporte: reporteDe(mes), pdf: Buffer.from('%PDF-1.4 prueba') });
+  const base = { activo: true, para: ['gerencia@serfor.gob.pe', 'admin@serfor.gob.pe'], diaHabil: 1, hora: '08:00', montos: false, copiaAdmin: true };
+
+  assert.match(crearReporteCorreo({ config: { ...base, para: ['gerencia@'] }, correo, generar, servicio, repo }).diagnostico().motivo, /no válidos: gerencia@/);
+  const sinCuenta = crearAlertasCorreo({ config: { remitente: '' }, servicio, repo });
+  assert.equal(crearReporteCorreo({ config: base, correo: sinCuenta, generar, servicio, repo }).diagnostico().motivo, 'Falta CORREO_REMITENTE en el .env');
+
+  const rc = crearReporteCorreo({ config: base, correo, generar, servicio, repo });
+  assert.deepEqual(await rc.destinatarios(), ['gerencia@serfor.gob.pe', 'admin@serfor.gob.pe'], 'el Administrador activo no se repite');
+  // martes 01/12/2026 es el primer día hábil de diciembre: informa noviembre desde las 08:00 de Lima
+  assert.equal(await rc.tocaEnviar(new Date('2026-12-01T12:30:00Z')), false, '07:30 en Lima');
+  assert.equal(await rc.tocaEnviar(new Date('2026-12-01T13:05:00Z')), true, '08:05 en Lima');
+  assert.equal((await rc.programacion(new Date('2026-12-01T13:05:00Z'))).mes, '2026-11');
+  assert.equal(await rc.tocaEnviar(new Date('2026-12-04T20:00:00Z')), true, 'si el servidor estuvo apagado, se envía después');
+
+  // prueba: solo al que la pide, con el PDF y sin registrar
+  const p = await rc.enviar({ mes: '2026-11', soloA: 'Admin@serfor.gob.pe' });
+  assert.deepEqual(p.enviados, ['admin@serfor.gob.pe']);
+  assert.match(enviados[0].subject, /^\[Prueba\] Reporte mensual/);
+  assert.equal(enviados[0].attachments[0].filename, 'reporte-mensual-2026-11.pdf');
+  assert.equal(enviados[0].attachments[0].contentType, 'application/pdf');
+  assert.equal(bitacora.length, 0);
+
+  // envío que nadie recibe: se registra, pero el mes sigue pendiente (se reintenta)
+  transporte.fallar = true;
+  const f = await rc.enviar({ mes: '2026-11' });
+  assert.equal(f.enviados.length, 0); assert.equal(f.fallidos.length, 2);
+  assert.equal(bitacora.length, 1);
+  assert.equal(await rc.enviadoMes('2026-11'), false);
+  assert.equal(await rc.tocaEnviar(new Date('2026-12-02T15:00:00Z')), true);
+
+  // envío correcto: ya no se repite en el mes
+  transporte.fallar = false; enviados.length = 0;
+  const ok = await rc.enviar({ mes: '2026-11' });
+  assert.deepEqual(ok.enviados, ['gerencia@serfor.gob.pe', 'admin@serfor.gob.pe']);
+  assert.equal(enviados[0].from.address, 'alertas@serfor.gob.pe');
+  assert.equal(bitacora[1].entidad, 'correo_reporte'); assert.equal(bitacora[1].origen, 'SISTEMA');
+  assert.equal(JSON.parse(bitacora[1].cambios_json).montos, false);
+  assert.equal(await rc.enviadoMes('2026-11'), true);
+  assert.equal(await rc.tocaEnviar(new Date('2026-12-02T15:00:00Z')), false, 'una vez por mes');
+  const u = await rc.ultimoEnvio();
+  assert.equal(u.mes, '2026-11'); assert.equal(u.enviados, 2);
+  // desactivado: nunca toca
+  assert.equal(await crearReporteCorreo({ config: { ...base, activo: false }, correo, generar, servicio, repo }).tocaEnviar(new Date('2027-01-04T15:00:00Z')), false);
+});
+
 test('API del correo de alertas: solo el Administrador; sin configurar, lo informa y no envía', async () => {
   const { crearApp } = require('../server/server');
   const { app } = await crearApp();
@@ -138,5 +216,16 @@ test('API del correo de alertas: solo el Administrador; sin configurar, lo infor
     const jefe = cliente(); await jefe.entrar('jefe.correo@serfor.gob.pe', j.cuerpo.clave_temporal);
     assert.equal((await jefe('GET', '/api/alertas-correo')).estado, 403);
     assert.equal((await jefe('POST', '/api/alertas-correo/enviar', { prueba: true })).estado, 403);
+    // reporte mensual por correo: mismo criterio
+    const rep = await admin('GET', '/api/reporte-correo');
+    assert.equal(rep.estado, 200);
+    assert.equal(rep.cuerpo.configuracion.configurado, false);
+    assert.equal(rep.cuerpo.configuracion.montos, false, 'sin montos por defecto');
+    assert.match(rep.cuerpo.mes, /^\d{4}-\d{2}$/);
+    assert.ok(rep.cuerpo.destinatarios.includes('admin.correo@serfor.gob.pe'), 'copia al Administrador');
+    assert.equal((await admin('POST', '/api/reporte-correo/enviar', {})).estado, 409, 'sin configurar no envía');
+    assert.equal((await admin('POST', '/api/reporte-correo/enviar', { mes: '2026-13' })).estado, 400);
+    assert.equal((await jefe('GET', '/api/reporte-correo')).estado, 403);
+    assert.equal((await jefe('POST', '/api/reporte-correo/enviar', { prueba: true })).estado, 403);
   } finally { servidor.close(); }
 });

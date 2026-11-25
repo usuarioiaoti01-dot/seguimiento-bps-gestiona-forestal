@@ -405,6 +405,8 @@ Hecho (127 pruebas; sin scripts de base de datos nuevos). Revisión de código d
   el TDR con IA» en el registro de la OS: precarga objeto, perfil, plazo y entregables (con % de pago) para que el usuario
   los revise; no escribe nada y no envía datos personales. Requiere `ANTHROPIC_API_KEY` y la salida a api.anthropic.com.
 
+Reporte mensual para Gerencia por correo, 25/11/2026: el N.° día hábil configurado de cada mes se envía el PDF del mes anterior (todos los proyectos, sin montos salvo decisión de la Dirección) con la cuenta de Google Workspace del correo de alertas; una vez por mes, con reintento y registro en la bitácora; prueba y envío manual desde Configuración.
+
 Asistente de IA y plantilla Excel por proyecto, 25/11/2026: el asistente responde sobre el proyecto en pantalla con los conceptos de su modalidad, suma el tablero general y los partes diarios, y nunca recibe montos ni datos personales del texto libre; la plantilla lleva el proyecto y sus profesionales.
 
 Bitácora por proyecto (§8, pestaña «Bitácora»), 25/11/2026: filtro por proyecto en la API y en la vista, y opción «Bitácora» en el menú de cada proyecto. Con esto la vista por proyecto del §8 queda completa.

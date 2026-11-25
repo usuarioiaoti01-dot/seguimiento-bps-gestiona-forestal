@@ -57,7 +57,7 @@ test('portafolio: avance, semáforo, entregables y montos por proyecto', async (
 });
 
 test('API: todos los proyectos para el Jefe de Proyecto; el monto solo en los suyos; exportación CSV', async (t) => {
-  const { app } = await crearApp();
+  const { app, generarReporteCorreo } = await crearApp();
   let servidor;
   await new Promise((ok) => { servidor = app.listen(0, ok); });
   t.after(() => servidor.close());
@@ -113,6 +113,13 @@ test('API: todos los proyectos para el Jefe de Proyecto; el monto solo en los su
   assert.equal(pdf.status, 401, 'sin sesión no se entrega');
   const pdfAna = await ana.c('GET', `/api/reportes/mensual.pdf?mes=${mesNotif}`);
   assert.equal(pdfAna.estado, 200); assert.match(pdfAna.tipo, /application\/pdf/); assert.ok(String(pdfAna.cuerpo).startsWith('%PDF-'));
+  // reporte que se envía por correo: lo arma el sistema con todos los proyectos y, por defecto, sin montos
+  const porCorreo = await generarReporteCorreo(mesNotif);
+  assert.ok(porCorreo.reporte.proyectos.some((x) => x.proyecto_id === p.proyecto_id), 'incluye todos los proyectos');
+  assert.equal(porCorreo.reporte.montos, null);
+  assert.ok(porCorreo.reporte.proyectos.every((x) => !('monto_comprometido' in x) && !('monto_conforme' in x)), 'sin montos por proyecto');
+  assert.match(porCorreo.reporte.generado_por, /Envío automático/);
+  assert.equal(porCorreo.pdf.subarray(0, 5).toString(), '%PDF-');
 
   // el Profesional no accede al tablero general
   const pr = await admin('POST', '/api/usuarios/profesionales', { cuentas: [{ consultor_id: reg.cuerpo.consultor.consultor_id, correo: 'sara.arias@ejemplo.com' }] });

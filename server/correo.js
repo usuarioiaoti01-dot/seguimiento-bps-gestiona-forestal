@@ -11,8 +11,9 @@
  * Las claves nunca se registran ni se devuelven por la API.
  */
 const fs = require('fs');
-const { aDia, hoyLima, crearCalendario } = require('./motor/calendario');
+const { aDia, aFecha, hoyLima, crearCalendario } = require('./motor/calendario');
 const { construirCorreos } = require('./alertas-correo');
+const { mesAnterior, correoReporte } = require('./reporte-mensual');
 
 const horaLima = (ahora = new Date()) => new Date(ahora.getTime() - 5 * 3600000).toISOString().slice(11, 16);
 
@@ -131,7 +132,121 @@ function crearAlertasCorreo({ config, servicio, repo, crearTransporte = null }) 
 
   const publico = () => ({ activo: config.activo, hora: config.hora, solo_habiles: config.soloHabiles, copia_admin: config.copiaAdmin, remitente: config.remitente || null, modo: config.modo, ...diagnostico() });
 
-  return { diagnostico, publico, vistaPrevia, enviar, probarConexion, ultimoEnvio, tocaEnviar, tic, programar, detener };
+  return { diagnostico, publico, vistaPrevia, enviar, probarConexion, ultimoEnvio, tocaEnviar, tic, programar, detener, obtenerTransporte, urlAplicacion: config.urlAplicacion, remitente: () => ({ name: config.nombre, address: config.remitente }) };
 }
 
-module.exports = { crearAlertasCorreo, horaLima };
+/** N.° día hábil (1 = primero) del mes AAAA-MM, según los feriados registrados. */
+function diaHabilDelMes(mes, n, feriados = []) {
+  const cal = crearCalendario({ tipo: 'HABILES', feriados });
+  let d = aDia(`${mes}-01`); let cuenta = 0;
+  for (let i = 0; i < 40; i++, d++) {
+    if (cal.esLaborable(d)) cuenta++;
+    if (cuenta === n) return aFecha(d);
+  }
+  return aFecha(d);
+}
+
+/**
+ * Envío del reporte mensual para Gerencia (PDF adjunto) con la misma cuenta del correo de alertas.
+ * El N.° día hábil configurado de cada mes, a la hora de Lima indicada, envía el reporte del mes anterior a los
+ * destinatarios de REPORTE_MENSUAL_PARA (y, si se indica, a los Administradores activos). Una vez por mes informado:
+ * el envío queda en la bitácora (entidad correo_reporte, con el mes), que es lo que evita repetirlo.
+ * generar(mes) devuelve { reporte, pdf } armado por el servidor con el alcance del sistema (montos según configuración).
+ */
+function crearReporteCorreo({ config, correo, generar, servicio, repo }) {
+  let enCurso = false; let reloj = null;
+
+  async function destinatarios() {
+    const lista = [...config.para];
+    if (config.copiaAdmin) for (const u of await repo.listarUsuarios()) if (u.rol === 'ADMIN' && u.activo && u.correo) lista.push(String(u.correo).toLowerCase());
+    return [...new Set(lista)];
+  }
+
+  function diagnostico() {
+    const d = correo.diagnostico();
+    if (!d.configurado) return d;
+    if (!config.para.length && !config.copiaAdmin) return { configurado: false, motivo: 'Falta REPORTE_MENSUAL_PARA en el .env' };
+    const malos = config.para.filter((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+    if (malos.length) return { configurado: false, motivo: `REPORTE_MENSUAL_PARA tiene correos no válidos: ${malos.join(', ')}` };
+    return { configurado: true, motivo: null };
+  }
+
+  async function ultimoEnvio() {
+    const filas = await repo.listarBitacora({ entidad: 'correo_reporte', limite: 20 });
+    const f = filas.find((b) => b.accion === 'ENVIAR');
+    if (!f) return null;
+    let c = f.cambios_json; try { if (typeof c === 'string') c = JSON.parse(c); } catch { c = {}; }
+    return { mes: (c && c.mes) || null, fecha: (c && c.fecha) || null, registrado: f.fecha, usuario: f.usuario, enviados: c && c.enviados, fallidos: c && c.fallidos ? c.fallidos.length : 0, origen: f.origen };
+  }
+
+  /** ¿Ya se envió el reporte de ese mes? */
+  async function enviadoMes(mes) {
+    const filas = await repo.listarBitacora({ entidad: 'correo_reporte', limite: 50 });
+    return filas.some((b) => { if (b.accion !== 'ENVIAR') return false; let c = b.cambios_json; try { if (typeof c === 'string') c = JSON.parse(c); } catch { return false; } return c && c.mes === mes && c.enviados > 0; });
+  }
+
+  /** Mes pendiente de informar y fecha programada del envío (mes en curso). */
+  async function programacion(ahora = new Date()) {
+    const hoy = hoyLima(ahora);
+    const d = await servicio.datos();
+    const fecha = diaHabilDelMes(hoy.slice(0, 7), config.diaHabil, (d.feriados || []).map((f) => f.fecha));
+    return { hoy, mes: mesAnterior(hoy), fecha_programada: fecha, hora: config.hora };
+  }
+
+  async function tocaEnviar(ahora = new Date()) {
+    if (!config.activo || !diagnostico().configurado) return false;
+    const p = await programacion(ahora);
+    if (p.hoy < p.fecha_programada || (p.hoy === p.fecha_programada && horaLima(ahora) < config.hora)) return false;
+    return !(await enviadoMes(p.mes));
+  }
+
+  /**
+   * Envía el reporte del mes. opts: { mes (AAAA-MM; por defecto el anterior), soloA (prueba: solo a ese correo, sin
+   * registrar), usuario, origen }.
+   */
+  async function enviar({ mes = null, soloA = null, usuario = 'sistema/reporte', origen = 'SISTEMA' } = {}) {
+    const d = diagnostico();
+    if (!d.configurado && !(soloA && correo.diagnostico().configurado)) throw Object.assign(new Error(`El envío del reporte no está configurado: ${d.motivo}`), { estado: 409 });
+    const t = correo.obtenerTransporte();
+    const m = mes || mesAnterior(hoyLima());
+    const { reporte, pdf } = await generar(m);
+    const c = correoReporte(reporte, { urlAplicacion: correo.urlAplicacion || '' });
+    const para = soloA ? [String(soloA).toLowerCase()] : await destinatarios();
+    const enviados = []; const fallidos = [];
+    for (const destino of para) {
+      try {
+        await t.sendMail({ from: correo.remitente(), to: destino, subject: soloA ? `[Prueba] ${c.asunto}` : c.asunto, text: c.texto, html: c.html, attachments: [{ filename: c.archivo, content: pdf, contentType: 'application/pdf' }] });
+        enviados.push(destino);
+      } catch (err) { fallidos.push({ para: destino, error: String(err.message || err).slice(0, 200) }); }
+    }
+    if (!soloA) {
+      await repo.registrarBitacora({ usuario, entidad: 'correo_reporte', accion: 'ENVIAR', origen, motivo: `Reporte mensual de ${reporte.nombre_mes}: ${enviados.length} enviado(s)${fallidos.length ? `, ${fallidos.length} con error` : ''}`,
+        cambios_json: { mes: m, fecha: hoyLima(), enviados: enviados.length, destinatarios: enviados, fallidos, montos: !!config.montos } });
+    }
+    return { mes: m, nombre_mes: reporte.nombre_mes, enviados, fallidos, prueba: !!soloA };
+  }
+
+  async function tic(ahora = new Date()) {
+    if (enCurso) return null;
+    enCurso = true;
+    try {
+      if (!(await tocaEnviar(ahora))) return null;
+      const r = await enviar();
+      console.log(`[reporte] reporte mensual de ${r.mes}: ${r.enviados.length} enviado(s), ${r.fallidos.length} con error`);
+      return r;
+    } catch (err) { console.error('[reporte] no se pudo enviar el reporte mensual:', err.message); return null; } finally { enCurso = false; }
+  }
+
+  function programar(cadaMs = 15 * 60000) {
+    if (reloj || !config.activo) return;
+    reloj = setInterval(() => { tic(); }, cadaMs);
+    if (reloj.unref) reloj.unref();
+  }
+  const detener = () => { if (reloj) clearInterval(reloj); reloj = null; };
+
+  const publico = () => ({ activo: config.activo, dia_habil: config.diaHabil, hora: config.hora, montos: config.montos, copia_admin: config.copiaAdmin, para: config.para, ...diagnostico() });
+
+  return { diagnostico, publico, destinatarios, ultimoEnvio, enviadoMes, programacion, tocaEnviar, enviar, tic, programar, detener };
+}
+
+module.exports = { crearAlertasCorreo, crearReporteCorreo, diaHabilDelMes, horaLima };

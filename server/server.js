@@ -27,7 +27,7 @@ const { construirPortafolio, totalesMonto } = require('./motor/portafolio');
 const { crearCierre } = require('./cierre');
 const { construirReporte, generarPdfReporte, rangoMes } = require('./reporte-mensual');
 const { construirExpediente } = require('./documentos/expediente');
-const { crearAlertasCorreo } = require('./correo');
+const { crearAlertasCorreo, crearReporteCorreo } = require('./correo');
 const { crearSsoGoogle, COOKIE_OAUTH } = require('./sso-google');
 
 async function crearApp() {
@@ -595,18 +595,20 @@ async function crearApp() {
   const sinInternos = ({ datos, estado, ...r }) => r; // la foto y el estado completos no salen por la API
   app.get('/api/portafolio', seg.requiere('EDITOR'), h(async (req) => sinInternos(await portafolio(req))));
   // Reporte mensual para Gerencia (Etapa 5): corte al último día del mes (o hoy si el mes está en curso)
-  async function reporteMensual(req) {
+  // sinMontos: quita los montos del reporte aunque el usuario pueda verlos (envío por correo sin REPORTE_MENSUAL_MONTOS)
+  async function reporteMensual(usuario, mesPedido, { sinMontos = false } = {}) {
     const hoy = hoyLima();
-    const mes = req.query.mes || hoy.slice(0, 7);
+    const mes = mesPedido || hoy.slice(0, 7);
     const { desde, hasta } = rangoMes(mes);
     if (desde > hoy) throw Object.assign(new Error('El mes aún no empieza'), { estado: 400 });
-    const p = await portafolio(req, hasta < hoy ? hasta : hoy);
+    const p = await portafolio({ usuario, query: {} }, hasta < hoy ? hasta : hoy);
+    if (sinMontos) { for (const f of p.proyectos) { delete f.monto_comprometido; delete f.monto_conforme; } p.montos = null; }
     const partes = await repo.listarPartes({ desde, hasta, limite: 1000 });
-    return construirReporte({ mes, datos: p.datos, estado: p.estado, portafolio: p, partes, montos: p.montos, generado_por: req.usuario.nombre || req.usuario.correo, generado_en: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' }) });
+    return construirReporte({ mes, datos: p.datos, estado: p.estado, portafolio: p, partes, montos: p.montos, generado_por: usuario.nombre || usuario.correo, generado_en: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' }) });
   }
-  app.get('/api/reportes/mensual', seg.requiere('EDITOR'), h((req) => reporteMensual(req)));
+  app.get('/api/reportes/mensual', seg.requiere('EDITOR'), h((req) => reporteMensual(req.usuario, req.query.mes)));
   app.get('/api/reportes/mensual.pdf', seg.requiere('EDITOR'), (req, res, next) => {
-    permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => reporteMensual(req)).then(generarPdfReporte).then((buf) => {
+    permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => reporteMensual(req.usuario, req.query.mes)).then(generarPdfReporte).then((buf) => {
       res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="reporte-mensual-${req.query.mes || hoyLima().slice(0, 7)}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'" });
       res.send(buf);
     }).catch(next);
@@ -685,6 +687,26 @@ async function crearApp() {
   // prueba: solo el correo que le tocaría al Administrador que la pide (no se registra como envío del día)
   app.post('/api/alertas-correo/enviar', seg.requiere('ADMIN'), h((req) => alertasCorreo.enviar((req.body || {}).prueba ? { soloA: req.usuario.correo } : { usuario: req.usuario.correo, origen: 'UI' })));
 
+  // ------------------------------------------------------------ reporte mensual para Gerencia por correo (solo el Administrador)
+  // Lo arma el sistema con alcance de Administrador (todos los proyectos); los montos solo con REPORTE_MENSUAL_MONTOS=true.
+  const USUARIO_REPORTE = { rol: 'ADMIN', correo: 'sistema/reporte', nombre: 'Envío automático del Seguimiento de Proyectos', proyectos: [] };
+  const generarReporteCorreo = (mes) => permisos.ejecutarConAlcance(permisos.alcanceDe(USUARIO_REPORTE), async () => {
+    const reporte = await reporteMensual(USUARIO_REPORTE, mes, { sinMontos: !config.reporte.montos });
+    return { reporte, pdf: await generarPdfReporte(reporte) };
+  });
+  const reporteCorreo = crearReporteCorreo({ config: config.reporte, correo: alertasCorreo, generar: generarReporteCorreo, servicio, repo });
+  reporteCorreo.programar();
+  app.get('/api/reporte-correo', seg.requiere('ADMIN'), h(async () => {
+    const p = await reporteCorreo.programacion();
+    return { configuracion: reporteCorreo.publico(), destinatarios: await reporteCorreo.destinatarios(), ultimo_envio: await reporteCorreo.ultimoEnvio(), ...p, enviado: await reporteCorreo.enviadoMes(p.mes) };
+  }));
+  // prueba: solo al Administrador que la pide (no se registra); envío: a los destinatarios, queda como el del mes
+  app.post('/api/reporte-correo/enviar', seg.requiere('ADMIN'), h((req) => {
+    const b = req.body || {};
+    if (b.mes) rangoMes(b.mes);
+    return reporteCorreo.enviar(b.prueba ? { mes: b.mes, soloA: req.usuario.correo } : { mes: b.mes, usuario: req.usuario.correo, origen: 'UI' });
+  }));
+
   // ------------------------------------------------------------ configuración (ADMIN)
   app.put('/api/parametros/:codigo', seg.requiere('JEFE_PROYECTO'), h(async (req) => {
     const r = await repo.guardarParametro(req.params.codigo, req.body.valor ?? '', req.usuario.correo);
@@ -761,7 +783,7 @@ async function crearApp() {
     res.status(estado).json({ error: estado >= 500 && config.produccion ? 'Error interno. Revise el registro del servidor.' : err.message, requiereMotivo: err.requiereMotivo, actual: err.actual });
   });
 
-  return { app, repo, servicio };
+  return { app, repo, servicio, generarReporteCorreo };
 }
 
 if (require.main === module) {

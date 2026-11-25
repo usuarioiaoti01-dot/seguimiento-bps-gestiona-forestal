@@ -60,7 +60,46 @@ export async function vistaConfiguracion(el) {
   el.querySelectorAll('[data-u]').forEach((b) => { b.onclick = () => editarUsuario(usuarioDe(b.dataset.u), consultores, usuarios); });
   el.querySelectorAll('[data-reset]').forEach((b) => { b.onclick = () => restablecerClave(usuarioDe(b.dataset.reset)); });
   el.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => cambiarActivo(usuarioDe(b.dataset.act)); });
-  if (admin) tarjetaCorreo(el).catch((err) => console.warn('[correo de alertas]', err.message));
+  if (admin) tarjetaCorreo(el).then(() => tarjetaReporte(el)).catch((err) => console.warn('[correo de alertas]', err.message));
+}
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+const nombreMes = (m) => { const [a, n] = String(m).split('-').map(Number); return `${MESES[n - 1]} de ${a}`; };
+
+/** Reporte mensual para Gerencia por correo: programación, destinatarios, último envío, prueba y envío manual. */
+async function tarjetaReporte(el) {
+  const r = await api('GET', '/reporte-correo');
+  const c = r.configuracion; const u = r.ultimo_envio;
+  const estadoTxt = !c.configurado ? `<span class="badge b-ambar">Sin configurar</span> <span class="mut2">${esc(c.motivo)}</span>`
+    : c.activo ? `<span class="badge b-verde">Activo</span> <span class="mut2">${c.dia_habil === 1 ? 'primer' : `${c.dia_habil}.°`} día hábil de cada mes a las ${esc(c.hora)} (hora de Lima)</span>`
+      : '<span class="badge b-gris">Configurado, desactivado</span> <span class="mut2">REPORTE_MENSUAL_CORREO=false</span>';
+  const pendiente = r.enviado ? `<b>${esc(nombreMes(r.mes))}</b><small>ya enviado</small>` : `<b>${esc(nombreMes(r.mes))}</b><small>${c.activo && c.configurado ? `se enviará el ${ff(r.fecha_programada)}${r.hoy > r.fecha_programada ? ' (atrasado: en la próxima revisión)' : ''}` : 'pendiente'}</small>`;
+  // meses que se pueden enviar: los 12 anteriores y el actual
+  const meses = []; { let [a, m] = r.hoy.slice(0, 7).split('-').map(Number); for (let i = 0; i < 13; i++) { meses.push(`${a}-${String(m).padStart(2, '0')}`); m--; if (!m) { m = 12; a--; } } }
+  el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="t-reporte"><div class="cab"><h2>Reporte mensual para Gerencia por correo</h2><div class="acciones">
+      <select id="r-mes" aria-label="Mes del reporte">${opciones(meses.map((m) => [m, nombreMes(m)]), r.mes)}</select>
+      <button class="btn peq" id="b-r-ver">Ver PDF</button>
+      ${c.configurado ? '<button class="btn peq" id="b-r-prueba">Enviarme una prueba</button><button class="btn peq prim" id="b-r-env">Enviar ahora</button>' : ''}</div></div>
+    <div class="cuerpo"><div class="datos">
+      <div class="dato"><small>Estado</small><div>${estadoTxt}</div></div>
+      <div class="dato"><small>Mes por informar</small>${pendiente}</div>
+      <div class="dato"><small>Destinatarios</small><b>${r.destinatarios.length}</b><small>${esc(r.destinatarios.join(', ') || 'ninguno')}</small></div>
+      <div class="dato"><small>Último envío</small><b class="num">${u ? esc(nombreMes(u.mes)) : '—'}</b>${u ? `<small>${esc(u.fecha ? u.fecha.split('-').reverse().join('/') : fh(u.registrado))} · ${u.enviados ?? 0} enviado(s)${u.fallidos ? ` · ${u.fallidos} con error` : ''} · ${esc(u.origen === 'UI' ? `manual (${u.usuario})` : 'automático')}</small>` : ''}</div>
+    </div></div>
+    <div class="cuerpo mut2">Lleva adjunto el PDF del reporte mensual (todos los proyectos, corte al último día del mes) ${c.montos ? '<b>con</b>' : 'sin'} montos de las Órdenes de Servicio; el texto del correo solo trae las cifras del resumen. Si el servidor estuvo apagado el día programado, se envía en la siguiente revisión. La configuración está en el <code>.env</code> del servidor (REPORTE_MENSUAL_* y la cuenta CORREO_* del correo de alertas).</div></div>`);
+  const t = el.querySelector('#t-reporte');
+  const mes = () => t.querySelector('#r-mes').value;
+  t.querySelector('#b-r-ver').onclick = () => window.open(`/api/reportes/mensual.pdf?mes=${encodeURIComponent(mes())}`, '_blank', 'noopener');
+  const accion = async (boton, fn) => { boton.disabled = true; try { await fn(); } catch (err) { fallo(err); } finally { boton.disabled = false; } };
+  const bpr = t.querySelector('#b-r-prueba');
+  if (bpr) bpr.onclick = () => accion(bpr, async () => { const x = await api('POST', '/reporte-correo/enviar', { mes: mes(), prueba: true }); aviso(x.enviados.length ? `Prueba del reporte de ${x.nombre_mes} enviada a ${x.enviados[0]}` : `No se pudo enviar: ${(x.fallidos[0] || {}).error || 'sin destinatario'}`, x.enviados.length ? 'exito' : 'error'); });
+  const benv = t.querySelector('#b-r-env');
+  if (benv) benv.onclick = async () => {
+    const m = mes();
+    const ok = await modal({ titulo: `Enviar el reporte de ${nombreMes(m)}`, contenido: `<p style="margin:0">Se enviará el reporte de <b>${esc(nombreMes(m))}</b> a ${r.destinatarios.length} destinatario(s): ${esc(r.destinatarios.join(', '))}.${m === r.mes ? ' Quedará como el envío de este mes (el automático ya no se repetirá).' : ''}${m === r.hoy.slice(0, 7) ? ' El mes aún está en curso: el corte será hoy.' : ''}</p>`, botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar', clase: 'prim', valor: 'ok' }] });
+    if (ok.valor !== 'ok') return;
+    accion(benv, async () => { const x = await api('POST', '/reporte-correo/enviar', { mes: m }); aviso(`Reporte de ${x.nombre_mes}: ${x.enviados.length} correo(s) enviado(s)${x.fallidos.length ? `, ${x.fallidos.length} con error` : ''}`, x.fallidos.length ? 'error' : 'exito'); window.sgfRefrescar(); });
+  };
 }
 
 /** Correo diario de alertas por Google Workspace (P11): estado, vista previa, prueba y envío manual. */

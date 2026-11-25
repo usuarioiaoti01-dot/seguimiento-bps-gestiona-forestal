@@ -68,6 +68,15 @@ const config = {
     puerto: Number(e.CORREO_PUERTO || 465),
     urlAplicacion: (e.URL_APLICACION || 'https://serforia.serfor.gob.pe').replace(/\/+$/, ''),
   },
+  // Reporte mensual para Gerencia por correo (usa la misma cuenta de Google Workspace). Desactivado por defecto.
+  reporte: {
+    activo: bool(e.REPORTE_MENSUAL_CORREO, false),
+    para: String(e.REPORTE_MENSUAL_PARA || '').split(/[;,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean),
+    diaHabil: Math.min(Math.max(Number(e.REPORTE_MENSUAL_DIA_HABIL) || 1, 1), 15), // N.° día hábil del mes siguiente
+    hora: /^\d{2}:\d{2}$/.test(e.REPORTE_MENSUAL_HORA || '') ? e.REPORTE_MENSUAL_HORA : '08:00', // hora de Lima
+    montos: bool(e.REPORTE_MENSUAL_MONTOS, false), // los montos son confidenciales (D4): solo si la Dirección lo decide
+    copiaAdmin: bool(e.REPORTE_MENSUAL_COPIA_ADMIN, true),
+  },
   // Ingreso con Google Workspace (OpenID Connect). Desactivado hasta que se configure; la clave local sigue funcionando.
   sso: {
     google: bool(e.SSO_GOOGLE, false),
