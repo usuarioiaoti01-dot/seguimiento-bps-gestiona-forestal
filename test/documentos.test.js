@@ -201,6 +201,21 @@ test('plantilla: Excel con las hojas Actividades, Adendas y Planes, listo para u
   assert.deepEqual([filas.actividades.length, filas.adendas.length, filas.planes.length], [0, 0, 0]);
 });
 
+test('plantilla por proyecto: su nombre, sus profesionales (hoja de consulta) y sin «Adendas» si es de Orden de Servicio', async () => {
+  const proyecto = { codigo: 'PRY-2026-001', nombre: 'Portal de transparencia', con_adendas: 0 };
+  const leida = await leer(await plantillaXlsx({ proyecto, profesionales: [{ clave: 'ZZA', nombres: 'Zoila Zamora' }, { clave: 'LTV', nombres: 'Luis Torres' }] }), 'plantilla.xlsx');
+  assert.deepEqual(leida.hojas.map((h) => h.nombre), ['Instrucciones', 'Actividades', 'Planes', 'Profesionales']);
+  assert.match(leida.hojas[0].filas[0][0], /PRY-2026-001 · Portal de transparencia/);
+  assert.ok(leida.hojas[0].filas.some((f) => /ÓRDENES DE SERVICIO/.test(f[0])) && !leida.hojas[0].filas.some((f) => /^ADENDAS/.test(f[0])));
+  assert.deepEqual(leida.hojas[3].filas, [['clave', 'nombres'], ['ZZA', 'Zoila Zamora'], ['LTV', 'Luis Torres']]);
+  const { filas, rechazadas } = tablasAFilas(leida.hojas);
+  assert.deepEqual(rechazadas, [], 'la hoja «Profesionales» es de consulta: no se procesa ni se rechaza');
+  assert.deepEqual([filas.actividades.length, filas.planes.length], [0, 0]);
+  // un proyecto con adendas (GF2026) conserva la hoja
+  const gf = await leer(await plantillaXlsx({ proyecto: { codigo: 'GF2026', nombre: 'Gestiona Forestal', con_adendas: 1 }, profesionales: [] }), 'p.xlsx');
+  assert.deepEqual(gf.hojas.map((h) => h.nombre), ['Instrucciones', 'Actividades', 'Adendas', 'Planes', 'Profesionales']);
+});
+
 // ---------------------------------------------------------------- vista previa y aplicación
 test('Excel completo: vista previa sin escribir, aplicación selectiva con bitácora, original conservado y bloqueo de repetición', async () => {
   const { docs, servicio, repo, datos } = await entorno();

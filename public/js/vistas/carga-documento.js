@@ -1,4 +1,4 @@
-import { api, esc, ff, modal, opciones, aviso, fallo, badge, ETIQ } from '../util.js';
+import { api, esc, ff, modal, opciones, aviso, fallo, badge, ETIQ, estado } from '../util.js';
 
 const MAX_BYTES = 50 * 1024 * 1024;
 
@@ -69,7 +69,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
           <select name="consultor_id"><option value="">— Según el contrato del documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]), opts.consultor_id)}</select></div>
       </div>
       <div class="mut2" style="line-height:1.5">Una adenda nueva se guarda <b>en trámite</b>, salvo que usted elija «Firmada» en la vista previa (entonces el documento es obligatorio). Si el documento trae el plazo pero no las fechas, el inicio se calcula desde el fin de la última adenda firmada. Antes de enviarlo al asistente se quitan DNI, teléfonos y correos, y el original se conserva.
-        <a href="/api/documentos/plantilla.xlsx">Descargar plantilla (Excel)</a></div>`
+        <a href="/api/documentos/plantilla.xlsx${estado.proyecto_id ? `?proyecto_id=${estado.proyecto_id}` : ''}">Descargar plantilla (Excel)</a></div>`
       : `<p class="mut" style="margin:0">Suba un documento del proyecto para actualizar actividades, avance, plazos de adendas o el estado de los planes. Antes de cambiar nada verá una <b>vista previa</b> y podrá elegir qué aplicar.</p>
       <div class="form">
         <div class="campo ancho"><label>Documento (máx. 50 MB)</label><input type="file" name="archivo" accept=".xlsx,.csv,.xml,.pdf,.docx"></div>
@@ -77,7 +77,7 @@ export async function abrirCargaDocumento(consultores, opts = {}) {
           <select name="consultor_id"><option value="">— Según lo que diga el documento —</option>${opciones(consultores.map((c) => [c.consultor_id, `${c.nombres} (${c.clave})`]))}</select></div>
       </div>
       <div class="mut2" style="line-height:1.5">
-        <b>Excel o CSV</b> con la plantilla: <a href="/api/documentos/plantilla.xlsx">descargar plantilla (Excel)</a> · <b>Cronograma</b> de un profesional en Excel (N.°, Nombre de tarea, Inicio, Fin, % completado) o el XML exportado de MS Project ·
+        <b>Excel o CSV</b> con la plantilla: <a href="/api/documentos/plantilla.xlsx${estado.proyecto_id ? `?proyecto_id=${estado.proyecto_id}` : ''}">descargar plantilla (Excel)</a> · <b>Cronograma</b> de un profesional en Excel (N.°, Nombre de tarea, Inicio, Fin, % completado) o el XML exportado de MS Project ·
         <b>PDF con texto o Word (.docx)</b>: los lee el asistente de IA, que propone los datos; antes se le quitan DNI, teléfonos y correos, y nunca escribe: usted confirma.</div>`,
     botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Revisar documento', clase: 'prim', valor: 'ok' }],
   });

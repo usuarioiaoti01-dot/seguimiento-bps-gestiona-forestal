@@ -99,7 +99,7 @@ function tablasAFilas(hojas, { clave = null } = {}) {
   const rechazadas = []; const hojasLeidas = [];
   for (const h of hojas) {
     const nombre = norm(h.nombre);
-    if (['instrucciones', 'leeme', 'ayuda'].includes(nombre)) continue;
+    if (['instrucciones', 'leeme', 'ayuda', 'profesionales'].includes(nombre)) continue; // hojas de referencia de la plantilla
     const ie = encontrarEncabezados(h.filas);
     if (ie < 0) { if (h.filas.length) rechazadas.push({ hoja: h.nombre, fila: null, motivo: 'No se reconocieron los encabezados de la hoja' }); continue; }
     const enc = h.filas[ie];

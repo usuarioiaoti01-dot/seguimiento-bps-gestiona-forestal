@@ -54,7 +54,9 @@ function crearPanel() {
     agregar('user', `<p>${esc(texto)}</p>`);
     const espera = agregar('assistant', '<span class="escribiendo">Analizando con las herramientas del sistema…</span>');
     try {
-      const r = await api('POST', '/ia/mensaje', { texto, conversacion_id: conversacion, consultor_id: contextoConsultor });
+      // proyecto en pantalla: solo en las vistas de un proyecto (no en el tablero general ni en las de toda la OTI)
+      const general = /^#?\/?$|^#\/(proyectos|configuracion|bitacora)$/.test(location.hash || '');
+      const r = await api('POST', '/ia/mensaje', { texto, conversacion_id: conversacion, consultor_id: contextoConsultor, proyecto_id: general ? null : estado.proyecto_id || null });
       conversacion = r.conversacion_id;
       espera.innerHTML = `${markdown(r.respuesta)}<div class="meta">${esc(r.modelo)} · ${r.uso.entrada.toLocaleString('es-PE')} tokens entrada / ${r.uso.salida.toLocaleString('es-PE')} salida${r.herramientas.length ? ` · consultó: ${esc([...new Set(r.herramientas)].join(', '))}` : ''}</div>`;
       for (const p of r.propuestas) chat.appendChild(tarjetaPropuesta(p));

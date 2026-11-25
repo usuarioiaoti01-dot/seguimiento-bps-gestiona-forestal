@@ -197,3 +197,64 @@ test('lectura del TDR con IA: devuelve objeto, plazo y entregables, sin datos pe
   assert.equal((await repo.listarBitacora({ limite: 1000 })).length, antes, 'la lectura no escribe datos del seguimiento');
   await assert.rejects(c.leerTdr('ficha-inexistente', ctx), (e) => e.estado === 400);
 });
+
+test('asistente por proyecto: prompt y herramientas del proyecto en pantalla; sin monto ni datos personales', async () => {
+  const repo = crearRepositorioMemoria({ semilla });
+  const servicio = crearServicio(repo);
+  await repo.guardarParametro('FECHA_CORTE', '2026-11-03', 'prueba');
+  const op = { usuario: 'prueba', motivo: 'Datos de prueba', origen: 'SCRIPT' };
+  const p = await repo.crear('proyecto', { codigo: 'PRY-2026-001', nombre: 'Portal de transparencia', modalidad: 'ORDEN_SERVICIO', con_profesionales: 1, con_adendas: 0, con_linea_base: 0, con_orden_servicio: 1, con_tdr: 1, estado: 'EN_EJECUCION' }, op);
+  const c = await repo.crear('consultor', { clave: 'ZZA', nombres: 'Zoila Zamora Aguirre', proyecto_id: p.proyecto_id, estado: 'ACTIVO' }, op);
+  const k = await repo.crear('contrato', { consultor_id: c.consultor_id, numero: 'OS-0077-2026', tipo_documento: 'ORDEN_SERVICIO', monto: 98765.43, estado_contratacion: 'EN_EJECUCION', fecha_notificacion: '2026-10-01', fecha_inicio: '2026-10-02', fecha_fin: '2026-11-30', plazo_dias: 60 }, op);
+  await repo.crear('adenda', { contrato_id: k.contrato_id, numero: 1, tipo_periodo: 'ORIGINAL', estado: 'FIRMADA', fecha_inicio: '2026-10-02', fecha_fin: '2026-11-30', plazo_dias: 60 }, op);
+  await repo.crear('entregable_servicio', { contrato_id: k.contrato_id, numero: 1, nombre: 'Informe de diagnóstico', plazo_dias: 30, fecha_limite: '2026-10-31', estado: 'PENDIENTE' }, { ...op, consultor_id: c.consultor_id });
+  await repo.crear('parte_diario', { proyecto_id: p.proyecto_id, consultor_id: c.consultor_id, contrato_id: k.contrato_id, fecha: '2026-11-02', descripcion: 'Reunión con el usuario; DNI 45678912 y teléfono 987654321 del contacto' }, { ...op, consultor_id: c.consultor_id });
+  servicio.invalidar();
+
+  const cliente = clienteSimulado([
+    { stop_reason: 'tool_use', content: [
+      { type: 'tool_use', id: 'r1', name: 'resumen_portafolio', input: {} }, { type: 'tool_use', id: 'r2', name: 'listar_alertas', input: {} },
+      { type: 'tool_use', id: 'r3', name: 'consultar_partes_diarios', input: {} }, { type: 'tool_use', id: 'r4', name: 'detalle_consultor', input: { clave: 'ZZA' } },
+      { type: 'tool_use', id: 'r5', name: 'resumen_proyectos', input: {} }, { type: 'tool_use', id: 'r6', name: 'consultar_bitacora', input: {} },
+    ] },
+    { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Listo.' }] },
+  ]);
+  const agente = crearAgente({ servicio, cliente });
+  await agente.conversar({ texto: '¿Cómo va el proyecto?', usuario: { correo: 'admin@serfor.gob.pe', nombre: 'Admin', rol: 'ADMIN' }, proyecto_id: p.proyecto_id });
+  const sistema = cliente.llamadas[0].system[0].text;
+  assert.match(sistema, /Proyecto en pantalla: PRY-2026-001 · Portal de transparencia \(modalidad Orden de Servicio; estado en ejecución\)/);
+  assert.match(sistema, /Modalidad ORDEN DE SERVICIO/);
+  assert.ok(!/CONTRATO Y ADENDAS/.test(sistema), 'no mezcla los conceptos de GF2026');
+  const resultado = (id) => JSON.parse(cliente.llamadas.at(-1).messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((x) => x.type === 'tool_result' && x.tool_use_id === id).content);
+  assert.deepEqual(resultado('r1').consultores.map((x) => x.clave), ['ZZA'], 'solo los profesionales del proyecto');
+  assert.equal(resultado('r1').consultores[0].entregables.vencidos, 1);
+  const alertas = resultado('r2');
+  assert.ok(alertas.length && alertas.every((a) => a.clave === 'ZZA'));
+  assert.ok(alertas.some((a) => a.codigo === 'ENTREGABLE_VENCIDO'));
+  const [parte] = resultado('r3');
+  assert.equal(parte.clave, 'ZZA'); assert.equal(parte.fecha, '02/11/2026');
+  const det = resultado('r4');
+  assert.equal(det.orden_servicio.numero, 'OS-0077-2026');
+  assert.equal(det.entregables[0].semaforo, 'ROJO');
+  const proyectos = resultado('r5').proyectos;
+  assert.ok(proyectos.some((x) => x.codigo === 'GF2026') && proyectos.some((x) => x.codigo === 'PRY-2026-001'));
+  assert.ok(proyectos.every((x) => !('monto_comprometido' in x)));
+  assert.ok(resultado('r6').some((b) => b.entidad === 'parte_diario'), 'la bitácora del proyecto incluye sus partes');
+  const enviado = JSON.stringify(cliente.llamadas.map((l) => l.messages));
+  assert.ok(!/98765.43|\\"monto\\"/.test(enviado), 'el monto de la OS nunca llega al modelo (ni por la bitácora)');
+  assert.ok(!/45678912|987654321/.test(enviado), 'los partes van sin DNI ni teléfonos');
+
+  // desde la ficha de un profesional de GF2026 (sin proyecto elegido), el proyecto en pantalla es el suyo
+  const gf = (await servicio.datos(true)).consultores.find((x) => x.clave === 'ERB');
+  const c2 = clienteSimulado([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Hola.' }] }]);
+  await crearAgente({ servicio, cliente: c2 }).conversar({ texto: 'hola', usuario: { correo: 'admin@serfor.gob.pe', nombre: 'Admin', rol: 'ADMIN' }, consultor_id: gf.consultor_id });
+  assert.match(c2.llamadas[0].system[0].text, /Proyecto en pantalla: GF2026/);
+  assert.match(c2.llamadas[0].system[0].text, /CONTRATO Y ADENDAS/);
+  // el profesional no tiene el tablero de todos los proyectos
+  const usuarioProf = { correo: 'zza@ejemplo.com', nombre: 'Zoila', rol: 'PROFESIONAL', consultor_id: c.consultor_id };
+  const c3 = clienteSimulado([{ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x1', name: 'resumen_proyectos', input: {} }] }, { stop_reason: 'end_turn', content: [{ type: 'text', text: 'No.' }] }]);
+  await crearAgente({ servicio, cliente: c3 }).conversar({ texto: 'todos los proyectos', usuario: usuarioProf });
+  assert.ok(!c3.llamadas[0].tools.some((t) => t.name === 'resumen_proyectos'));
+  const res = JSON.parse(c3.llamadas.at(-1).messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((x) => x.type === 'tool_result').content);
+  assert.match(res.error, /desconocida/);
+});

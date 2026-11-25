@@ -14,32 +14,61 @@
 const crypto = require('crypto');
 const config = require('../config');
 const { redactarPersonales } = require('../documentos/interprete');
+const { construirPortafolio } = require('../motor/portafolio');
 
 const ff = (s) => (s ? String(s).slice(0, 10).split('-').reverse().join('/') : null);
 
-const SISTEMA = `Eres el asistente de seguimiento del equipo de consultores BPS que desarrolla los aplicativos del Gestiona Forestal (Proyecto PI2 Bosques – UE 003, financiado por KfW) para la Oficina de Tecnologías de la Información (OTI) del SERFOR. Atiendes al Director de TI y a su equipo.
+// El prompt de sistema se arma según el proyecto en pantalla (modalidad y datos): ver sistemaPara()
+const INTRO = 'Eres el asistente de seguimiento de los proyectos de la Oficina de Tecnologías de la Información (OTI) del SERFOR. Atiendes al Director de TI y al Equipo de Desarrollo (Jefes de Proyecto), que supervisan a los profesionales contratados para cada proyecto.';
 
-Tu trabajo:
-- Responder sobre vigencia contractual (contratos y adendas), planes de trabajo, actividades, fechas probables de término, holguras, línea base 2026 y alertas.
+const TRABAJO = `Tu trabajo:
+- Responder sobre el proyecto en pantalla (o sobre todos, con resumen_proyectos): profesionales, contratos u Órdenes de Servicio, vigencia, entregables, planes de trabajo, actividades, fechas probables de término, holguras, partes diarios y alertas.
 - Explicar por qué una fecha probable se movió y qué actividades la empujan (ruta crítica).
 - Simular escenarios ("¿qué pasa si...?") con la herramienta simular_cambios antes de recomendar.
-- Proponer actualizaciones con proponer_cambios cuando el usuario lo pida o cuando sea evidente que conviene registrar algo. Tú no guardas nada: el usuario revisa y aplica la propuesta.
-- Redactar textos breves (correos, párrafos de informe o memorando) a partir de los datos.
+- Proponer actualizaciones de actividades, adendas o planes con proponer_cambios cuando el usuario lo pida o cuando sea evidente que conviene registrar algo. Tú no guardas nada: el usuario revisa y aplica la propuesta. Las Órdenes de Servicio, sus entregables, la notificación, la conformidad y los partes diarios no se proponen: se registran en sus pantallas.
+- Redactar textos breves (correos, párrafos de informe o memorando) a partir de los datos.`;
 
-Conceptos del sistema:
-- Vigencia: fin de la última adenda FIRMADA. Una adenda ANUNCIADA o EN_TRAMITE no amplía la vigencia; solo se informa como vigencia potencial.
+const CONCEPTOS_COMUNES = `Conceptos del sistema:
+- Plan de trabajo: el seguimiento arranca cuando el plan está APROBADO (formulación → revisión del Jefe de Proyecto → revisión del Administrador).
 - Fecha probable de término: la calcula el motor del sistema. Las actividades sin iniciar cuyo inicio ya pasó se reprograman desde la fecha de corte; las iniciadas proyectan lo que falta según su rendimiento (SPI = avance real / avance esperado, con un piso configurable); las dependencias fin-inicio arrastran a las sucesoras.
 - Holgura = fin de vigencia − fecha probable de término. Negativa = el plan no cabe en la vigencia.
-- Historial de adendas: las Adendas 01 y 02 están CONCLUIDAS. Cada adenda tiene plazo otorgado y, cuando se conoce, plazo solicitado (p. ej. se solicitaron 180 días y se otorgaron 60). Los días sin cobertura son los que hay entre el fin de una adenda y el inicio de la siguiente; si las vigencias se superponen es una inconsistencia de datos. Usa consultar_historial_adendas para responder sobre ello; no inventes plazos.
-- Clasificación de actividades frente a la línea base: ALINEADA, REASIGNADA (venía de otro consultor), NUEVA (fuera de línea base: requiere Acta de Control de Cambios aprobada antes de la conformidad) y TRANSVERSAL (soporte).
-- Si una actividad no tiene avance registrado, el pronóstico asume que no se ejecutó: dilo explícitamente y recomienda registrar el avance real antes de sacar conclusiones.
+- Clasificación de actividades frente a la línea base: ALINEADA, REASIGNADA (venía de otro profesional), NUEVA (fuera de línea base: requiere Acta de Control de Cambios aprobada antes de la conformidad) y TRANSVERSAL (soporte).
+- Si una actividad no tiene avance registrado, el pronóstico asume que no se ejecutó: dilo explícitamente y recomienda registrar el avance real antes de sacar conclusiones.`;
 
-Reglas:
+const CONCEPTOS_ADENDAS = `Modalidad CONTRATO Y ADENDAS (caso atípico, p. ej. GF2026 · Gestiona Forestal, Proyecto PI2 Bosques – UE 003, financiado por KfW, con consultores BPS y línea base 2026 del cronograma MS Project v3):
+- Vigencia: fin de la última adenda FIRMADA. Una adenda ANUNCIADA o EN_TRAMITE no amplía la vigencia; solo se informa como vigencia potencial.
+- Historial de adendas: las Adendas 01 y 02 están CONCLUIDAS. Cada adenda tiene plazo otorgado y, cuando se conoce, plazo solicitado (p. ej. se solicitaron 180 días y se otorgaron 60). Los días sin cobertura son los que hay entre el fin de una adenda y el inicio de la siguiente; si las vigencias se superponen es una inconsistencia de datos. Usa consultar_historial_adendas para responder sobre ello; no inventes plazos.`;
+
+const CONCEPTOS_OS = `Modalidad ORDEN DE SERVICIO (proceso estándar de la OTI):
+- Cada profesional tiene una Orden de Servicio (OS) con su TDR, plazo y entregables. Registrada y sin notificar, el plazo no corre.
+- El plazo corre desde el día siguiente de la notificación, en días calendario: inicio = notificación + 1; fin = notificación + plazo; fecha límite de cada entregable = notificación + su plazo. La ampliación de plazo agrega un periodo; una nueva OS es otra contratación.
+- Entregable: PENDIENTE → PRESENTADO → (OBSERVADO → SUBSANADO) → CONFORME; ANULADO si la OS se resuelve. Semáforo: ROJO (vencido sin presentar, subsanación vencida o sus actividades terminarían después de la fecha límite), ÁMBAR (vence pronto u holgura baja), VERDE, AZUL (espera la conformidad) y GRIS.
+- El equipo tiene un plazo para dar la conformidad u observar; pasado, es «conformidad fuera de plazo». Con el último entregable conforme, la OS culmina.
+- Partes diarios: el equipo registra cada día lo realizado, incidencias, riesgos y el avance; no se modifican, se corrigen con otro parte que los rectifica. Usa consultar_partes_diarios.
+- El monto de la OS es confidencial: no lo tienes ni lo informes. Las penalidades por atraso deben confirmarse con Abastecimiento y el TDR.`;
+
+const REGLAS = `Reglas:
 - Usa siempre las herramientas para obtener datos; no inventes cifras, fechas ni nombres. Si un dato no está, dilo.
+- Las herramientas trabajan sobre el proyecto en pantalla; para otro profesional, indica su clave; para todos los proyectos, usa resumen_proyectos.
 - Fechas en formato dd/mm/aaaa. Responde en español, con tono profesional y ejecutivo, breve y estructurado (viñetas o una tabla corta cuando ayude).
-- No emitas opiniones legales concluyentes. Sobre ampliaciones de plazo, conformidades o penalidades, indica que deben confirmarse con el contrato, las normas del financiamiento y el área legal o la unidad ejecutora del proyecto.
+- No emitas opiniones legales concluyentes. Sobre ampliaciones de plazo, conformidades o penalidades, indica que deben confirmarse con el contrato o la Orden de Servicio y su TDR, las normas aplicables y el área legal o de Abastecimiento.
 - Nunca solicites ni muestres datos personales (DNI, teléfonos, correos personales).
 - Cuando propongas cambios, explica en una línea qué hará la propuesta y que el usuario debe aplicarla con el botón correspondiente.`;
+
+const NOMBRE_MODALIDAD = { ORDEN_SERVICIO: 'Orden de Servicio', CONTRATO_ADENDAS: 'contrato y adendas (caso atípico)', GESTION_INTERNA: 'gestión interna, sin profesionales contratados' };
+const ESTADO_PROYECTO = { REGISTRADO: 'registrado', EN_EJECUCION: 'en ejecución', SUSPENDIDO: 'suspendido', CONCLUIDO: 'concluido', CERRADO: 'cerrado', ANULADO: 'anulado' };
+const modalidadDe = (p) => (p ? p.modalidad || (p.con_profesionales === 0 ? 'GESTION_INTERNA' : p.con_adendas === 1 ? 'CONTRATO_ADENDAS' : 'ORDEN_SERVICIO') : null);
+
+/** Prompt de sistema para el proyecto en pantalla (sin proyecto: los conceptos de ambas modalidades). */
+function sistemaPara(proyecto = null) {
+  const m = modalidadDe(proyecto);
+  const enPantalla = proyecto
+    ? `Proyecto en pantalla: ${proyecto.codigo} · ${proyecto.nombre} (modalidad ${NOMBRE_MODALIDAD[m] || m}; estado ${ESTADO_PROYECTO[proyecto.estado] || String(proyecto.estado || '').toLowerCase()}${proyecto.area_tecnica ? `; gestión: ${proyecto.area_tecnica}` : ''}).`
+    : 'No hay un proyecto elegido: las herramientas abarcan todos los proyectos.';
+  const conceptos = m === 'CONTRATO_ADENDAS' ? [CONCEPTOS_ADENDAS] : m === 'ORDEN_SERVICIO' ? [CONCEPTOS_OS] : m === 'GESTION_INTERNA' ? [] : [CONCEPTOS_OS, CONCEPTOS_ADENDAS];
+  return [INTRO, enPantalla, TRABAJO, CONCEPTOS_COMUNES, ...conceptos, REGLAS].join('\n\n');
+}
+const SISTEMA = sistemaPara(null);
 
 /** Herramienta de extracción para documentos PDF/Word: el modelo solo devuelve filas; no escribe nada. */
 const FILA_ACTIVIDAD = { type: 'object', properties: { clave: { type: 'string' }, numero: { type: 'string' }, avance: { type: 'number' }, estado: { type: 'string', enum: ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA'] }, inicio_plan: { type: 'string' }, fin_plan: { type: 'string' }, inicio_real: { type: 'string' }, fin_real: { type: 'string' }, descripcion: { type: 'string' }, evidencia: { type: 'string' }, observacion: { type: 'string' } } };
@@ -50,7 +79,7 @@ const HERRAMIENTA_EXTRACCION = {
   description: 'Registra las actualizaciones que el documento declara de forma explícita: actividades (avance, estado, fechas), adendas (fechas, plazos, estado) y estado de planes. No inventes datos: omite lo que el documento no diga.',
   input_schema: { type: 'object', properties: { actividades: { type: 'array', items: FILA_ACTIVIDAD }, adendas: { type: 'array', items: FILA_ADENDA }, planes: { type: 'array', items: FILA_PLAN } }, required: ['actividades', 'adendas', 'planes'] },
 };
-const SISTEMA_EXTRACCION = `Extraes datos de documentos del proyecto Gestiona Forestal (OTI – SERFOR) para actualizar el seguimiento de los consultores BPS.
+const SISTEMA_EXTRACCION = `Extraes datos de documentos de un proyecto de la OTI – SERFOR para actualizar el seguimiento de sus profesionales (actividades, adendas y planes).
 Reglas:
 - Devuelve solo lo que el documento declara de forma explícita; no inventes ni deduzcas valores. Si un dato no aparece, omite el campo.
 - Fechas en formato AAAA-MM-DD. El avance es un número de 0 a 100.
@@ -65,7 +94,7 @@ const HERRAMIENTA_ADENDA = {
   description: 'Registra los datos de la adenda que el documento formaliza o solicita: contrato, N.° de adenda, plazo otorgado (días), plazo solicitado, inicio y fin si el documento los dice, fecha de suscripción, título del documento y expediente. No inventes datos: omite lo que el documento no diga.',
   input_schema: { type: 'object', properties: { adendas: { type: 'array', items: FILA_ADENDA_DOCUMENTO } }, required: ['adendas'] },
 };
-const SISTEMA_ADENDA = `Extraes los datos de una ADENDA a un contrato de consultoría del proyecto Gestiona Forestal (OTI – SERFOR) para actualizar el seguimiento de la vigencia.
+const SISTEMA_ADENDA = `Extraes los datos de una ADENDA a un contrato de consultoría de un proyecto de la OTI – SERFOR para actualizar el seguimiento de la vigencia.
 Reglas:
 - Devuelve solo lo que el documento declara de forma explícita; no inventes ni deduzcas valores. Si un dato no aparece, omite el campo.
 - «contrato» es el número completo del contrato (p. ej. 035-2026-MIDAGRI-SERFOR-PKFW); «numero» es el N.° de la adenda (p. ej. 3 para «Adenda N.° 03»).
@@ -124,18 +153,28 @@ Reglas:
 const HERRAMIENTAS = [
   {
     name: 'resumen_portafolio',
-    description: 'Resumen de todos los consultores: contrato, adenda vigente y siguiente, días de vigencia restantes, fin del plan, fecha probable de término, holgura, semáforo, avance real vs esperado, SPI e indicadores globales.',
+    description: 'Resumen de los profesionales del proyecto en pantalla (o de todos si no hay proyecto elegido): contrato u Orden de Servicio y su estado, periodo vigente y siguiente, días de vigencia restantes, entregables pendientes y vencidos con su semáforo, último parte diario, fin del plan, fecha probable de término, holgura, semáforo, avance real vs esperado, SPI e indicadores.',
     input_schema: { type: 'object', properties: { fecha_corte: { type: 'string', description: 'AAAA-MM-DD; por defecto, la fecha de corte vigente' } } },
   },
   {
+    name: 'resumen_proyectos',
+    description: 'Tablero general de TODOS los proyectos de la OTI (en curso y terminados): modalidad, estado, responsable, avance, semáforo, profesionales, Órdenes de Servicio por estado, entregables pendientes, vencidos y por vencer, próximo entregable, último parte diario y alertas. Sin montos.',
+    input_schema: { type: 'object', properties: { fecha_corte: { type: 'string' } } },
+  },
+  {
     name: 'detalle_consultor',
-    description: 'Detalle de un consultor por su clave (p. ej. PBQ, ERB): contrato, adendas, plan de trabajo, actividades con fechas del plan, reales y probables, desvío, situación, ruta crítica y predecesoras, cobertura de línea base, actas de control de cambios y alertas.',
+    description: 'Detalle de un profesional por su clave (p. ej. PBQ, ERB): contrato u Orden de Servicio (notificación, plazo, inicio, fin y estado), entregables con fecha límite, estado, semáforo y avance, adendas o periodos, plan de trabajo, actividades con fechas del plan, reales y probables, desvío, situación, ruta crítica y predecesoras, cobertura de línea base, actas de control de cambios y alertas.',
     input_schema: { type: 'object', properties: { clave: { type: 'string' }, fecha_corte: { type: 'string' } }, required: ['clave'] },
   },
   {
     name: 'listar_alertas',
-    description: 'Alertas vigentes (vigencia por vencer, plan que excede la vigencia, actividades vencidas, actividades nuevas sin acta, línea base no cubierta, etc.). Filtros opcionales.',
+    description: 'Alertas vigentes del proyecto en pantalla (o de todos): vigencia por vencer, entregables vencidos o por vencer, subsanaciones y conformidades fuera de plazo, partes diarios faltantes, OS sin notificar, plan que excede la vigencia, actividades vencidas, actividades nuevas sin acta, línea base no cubierta, etc. Filtros opcionales.',
     input_schema: { type: 'object', properties: { prioridad: { type: 'string', enum: ['ALTA', 'MEDIA'] }, clave: { type: 'string' } } },
+  },
+  {
+    name: 'consultar_partes_diarios',
+    description: 'Partes diarios de supervisión del proyecto en pantalla o de un profesional (clave): fecha, profesional, lo realizado, incidencias, riesgos, avance reportado por actividad y si rectifica otro parte. Los más recientes primero.',
+    input_schema: { type: 'object', properties: { clave: { type: 'string' }, desde: { type: 'string', description: 'AAAA-MM-DD' }, hasta: { type: 'string' }, limite: { type: 'integer', minimum: 1, maximum: 50 } } },
   },
   {
     name: 'simular_cambios',
@@ -166,7 +205,7 @@ const HERRAMIENTAS = [
   },
   {
     name: 'consultar_bitacora',
-    description: 'Últimos cambios registrados (quién, cuándo, qué y por qué), opcionalmente de un consultor.',
+    description: 'Últimos cambios registrados (quién, cuándo, qué y por qué) del proyecto en pantalla o de un profesional (clave).',
     input_schema: { type: 'object', properties: { clave: { type: 'string' }, limite: { type: 'integer', minimum: 1, maximum: 50 } } },
   },
   {
@@ -217,17 +256,31 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     return c;
   };
 
+  /** Profesionales del proyecto en pantalla (null = sin filtro). */
+  const delProyecto = async (ctx) => {
+    if (!ctx || !ctx.proyecto) return null;
+    const d = await servicio.datos();
+    return new Set(d.consultores.filter((c) => c.proyecto_id === ctx.proyecto.proyecto_id).map((c) => c.consultor_id));
+  };
+  // Lo que el modelo ve de una Orden de Servicio y de sus entregables (nunca el monto: D4)
+  const osPublica = (k) => (k ? { numero: k.numero, tipo: k.tipo_documento === 'ORDEN_SERVICIO' ? 'Orden de Servicio' : 'Contrato', estado: k.estado_contratacion || null, notificacion: ff(k.fecha_notificacion), medio_notificacion: k.medio_notificacion || null, plazo_dias: k.plazo_dias ?? null, inicio: ff(k.fecha_inicio), fin: ff(k.fecha_fin), culminacion: ff(k.fecha_culminacion) } : null);
+  const entregablePublico = (e) => ({ numero: e.numero, nombre: e.nombre, plazo_dias: e.plazo_dias, fecha_limite: ff(e.fecha_limite), porcentaje_pago: e.porcentaje_pago ?? null, estado: e.estado, semaforo: e.semaforo, situacion: e.motivo, dias_para_vencer: e.dias_para_vencer, dias_atraso: e.dias_atraso, avance: e.avance, presentado: ff(e.fecha_presentacion), observado: ff(e.fecha_observacion), subsanar_hasta: ff(e.fecha_limite_subsanacion), conforme: ff(e.fecha_conformidad) });
+
   const EJECUTORES = {
-    async resumen_portafolio({ fecha_corte }) {
-      const e = await servicio.estado({ corte: fecha_corte });
+    async resumen_portafolio({ fecha_corte }, ctx) {
+      const e = await servicio.estado({ corte: fecha_corte, proyecto_id: ctx && ctx.proyecto ? ctx.proyecto.proyecto_id : undefined });
       return {
-        fecha_corte: ff(e.corte), metodo: e.metodo, indicadores: e.indicadores,
+        fecha_corte: ff(e.corte), metodo: e.metodo, proyecto: ctx && ctx.proyecto ? `${ctx.proyecto.codigo} · ${ctx.proyecto.nombre}` : 'todos los proyectos', indicadores: e.indicadores, entregables: e.entregables,
         consultores: e.consultores.map((it) => {
           const p = it.pronostico;
           const v = it.vigencia;
           const atras = p ? Object.values(p.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion)).length : 0;
+          const pend = (it.entregables || []).filter((x) => !['CONFORME', 'ANULADO'].includes(x.estado));
           return {
-            clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil, contrato: it.contrato && it.contrato.numero,
+            clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil, estado: it.consultor.estado, contrato: it.contrato && it.contrato.numero,
+            estado_contratacion: it.contrato ? it.contrato.estado_contratacion || null : null,
+            entregables: (it.entregables || []).length ? { total: it.entregables.length, pendientes: pend.length, vencidos: pend.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables, proximo: pend.filter((x) => x.fecha_limite).sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)).map((x) => `${x.numero}. ${x.nombre} (${ff(x.fecha_limite)})`)[0] || null } : null,
+            ultimo_parte: ff(it.ultimo_parte),
             adenda_vigente: v.adenda_vigente && `N.° ${v.adenda_vigente.numero} (${ff(v.adenda_vigente.fecha_inicio)}–${ff(v.adenda_vigente.fecha_fin)})`,
             dias_restantes: v.dias_restantes,
             adenda_siguiente: v.adenda_siguiente && `N.° ${v.adenda_siguiente.numero} ${v.adenda_siguiente.estado} hasta ${ff(v.adenda_siguiente.fecha_fin)}`,
@@ -247,7 +300,10 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
         fecha_corte: ff(det.corte),
         consultor: { clave: det.consultor.clave, nombres: det.consultor.nombres, perfil: det.consultor.perfil, recurso_cronograma: det.consultor.recurso_cronograma, observacion: det.consultor.observacion },
         contrato: det.contrato && { contrato_id: det.contrato.contrato_id, numero: det.contrato.numero, titulo_tdr: det.contrato.titulo_tdr, expediente: det.contrato.expediente },
-        adendas: det.adendas.map((a) => ({ adenda_id: a.adenda_id, numero: a.numero, estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin), plazo_otorgado_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null, documento: a.documento_ref, observacion: a.observacion })),
+        orden_servicio: det.contrato && det.contrato.tipo_documento === 'ORDEN_SERVICIO' ? osPublica(det.contrato) : null,
+        ordenes_anteriores: (det.contrataciones || []).filter((k) => k.tipo_documento === 'ORDEN_SERVICIO' && (!det.contrato || k.contrato_id !== det.contrato.contrato_id)).map(osPublica),
+        entregables: (det.entregables || []).filter((e) => !det.contrato || e.contrato_id === det.contrato.contrato_id).map(entregablePublico),
+        adendas: det.adendas.map((a) => ({ adenda_id: a.adenda_id, numero: a.numero, tipo: a.tipo_periodo || 'ADENDA', estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin), plazo_otorgado_dias: a.plazo_dias ?? null, plazo_solicitado_dias: a.plazo_solicitado_dias ?? null, documento: a.documento_ref, observacion: a.observacion })),
         vigencia: { ...det.vigencia, adenda_vigente: undefined, adenda_siguiente: undefined, fin_vigencia: ff(det.vigencia.fin_vigencia), fin_vigencia_potencial: ff(det.vigencia.fin_vigencia_potencial) },
         plan: det.plan && { plan_id: det.plan.plan_id, nombre: det.plan.nombre, estado: det.plan.estado, tipo_dias: det.plan.tipo_dias, fuente: det.plan.fuente },
         pronostico_plan: det.pronostico && { fin_plan: ff(det.pronostico.fin_plan), fin_probable: ff(det.pronostico.fin_probable), avance_real: det.pronostico.avance_ponderado, avance_esperado: det.pronostico.avance_esperado, spi: det.pronostico.spi },
@@ -265,10 +321,38 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       };
     },
 
-    async listar_alertas({ prioridad, clave }) {
+    async listar_alertas({ prioridad, clave }, ctx) {
       const e = await servicio.estado();
-      return e.alertas.filter((a) => (!prioridad || a.prioridad === prioridad) && (!clave || a.clave === String(clave).toUpperCase()))
-        .map((a) => ({ prioridad: a.prioridad, clave: a.clave, titulo: a.titulo, detalle: a.detalle, accion: a.accion }));
+      const ids = clave ? null : await delProyecto(ctx);
+      return e.alertas.filter((a) => (!prioridad || a.prioridad === prioridad) && (!clave || a.clave === String(clave).toUpperCase()) && (!ids || ids.has(a.consultor_id)))
+        .map((a) => ({ prioridad: a.prioridad, codigo: a.codigo, clave: a.clave, titulo: a.titulo, detalle: a.detalle, accion: a.accion }));
+    },
+
+    async resumen_proyectos({ fecha_corte }) {
+      const d = await servicio.datos();
+      const e = await servicio.estado({ corte: fecha_corte });
+      const vivos = d.proyectos.filter((p) => p.activo !== 0 && p.activo !== false);
+      const equipos = Object.fromEntries(await Promise.all(vivos.map(async (p) => [p.proyecto_id, await servicio.equipoDe(p.proyecto_id)])));
+      const r = construirPortafolio(d, e, { equipos });
+      return {
+        fecha_corte: ff(r.resumen.corte), resumen: r.resumen,
+        proyectos: r.proyectos.map(({ monto_comprometido: _m, monto_conforme: _c, linea: _l, equipo: _e, ...f }) => ({ ...f, proximo_entregable: f.proximo_entregable && { ...f.proximo_entregable, fecha_limite: ff(f.proximo_entregable.fecha_limite) }, ultimo_parte: ff(f.ultimo_parte) })),
+      };
+    },
+
+    async consultar_partes_diarios({ clave, desde, hasta, limite = 15 }, ctx) {
+      const c = clave ? await porClave(clave) : null;
+      if (!c && !(ctx && ctx.proyecto)) throw new Error('Indique la clave del profesional o elija un proyecto');
+      const d = await servicio.datos();
+      const partes = await servicio.repo.listarPartes({ consultor_id: c && c.consultor_id, proyecto_id: c ? undefined : ctx.proyecto.proyecto_id, desde, hasta, limite: Math.min(Number(limite) || 15, 50) });
+      const act = new Map(d.actividades.map((a) => [a.actividad_id, a]));
+      const cons = new Map(d.consultores.map((x) => [x.consultor_id, x]));
+      const limpio = (t) => (t ? redactarPersonales(String(t)).texto : null); // texto libre del equipo: sin DNI, teléfonos ni correos
+      return partes.map((p) => ({
+        fecha: ff(p.fecha), clave: (cons.get(p.consultor_id) || {}).clave, realizado: limpio(p.descripcion), incidencias: limpio(p.incidencias), riesgos: limpio(p.riesgos),
+        justificacion_tardia: limpio(p.justificacion), rectifica_parte_del: p.rectifica_parte_id ? ff((partes.find((x) => x.parte_id === p.rectifica_parte_id) || {}).fecha) || `parte ${p.rectifica_parte_id}` : null,
+        avances: (p.items || []).map((i) => ({ actividad: (act.get(i.actividad_id) || {}).numero || i.actividad_id, subactividad: i.subactividad_indice !== null && i.subactividad_indice !== undefined ? i.subactividad_indice + 1 : null, de: i.avance_anterior, a: i.avance_reportado, comentario: limpio(i.comentario) })),
+      }));
     },
 
     async simular_cambios({ cambios, fecha_corte }) {
@@ -280,11 +364,12 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       };
     },
 
-    async consultar_historial_adendas({ clave }) {
+    async consultar_historial_adendas({ clave }, ctx) {
       const c = clave ? await porClave(clave) : null;
       const e = await servicio.estado();
+      const ids = c ? null : await delProyecto(ctx);
       // Solo se expone lo contractual: ni DNI, teléfono ni correo (regla 8).
-      return e.consultores.filter((it) => !c || it.consultor.consultor_id === c.consultor_id).map((it) => ({
+      return e.consultores.filter((it) => (!c || it.consultor.consultor_id === c.consultor_id) && (!ids || ids.has(it.consultor.consultor_id))).map((it) => ({
         clave: it.consultor.clave, nombres: it.consultor.nombres, contrato: it.contrato && it.contrato.numero,
         adendas: it.adendas.filter((a) => a.estado !== 'ANULADA').sort((a, b) => a.numero - b.numero).map((a) => ({
           numero: a.numero, estado: a.estado, inicio: ff(a.fecha_inicio), fin: ff(a.fecha_fin),
@@ -301,11 +386,14 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       }));
     },
 
-    async consultar_bitacora({ clave, limite = 20 }) {
+    async consultar_bitacora({ clave, limite = 20 }, ctx) {
       const c = clave ? await porClave(clave) : null;
-      // Regla 8: el modelo nunca recibe datos personales, ni siquiera cuando el usuario es ADMIN.
-      const filas = servicio.sanearBitacora(await servicio.repo.listarBitacora({ consultor_id: c && c.consultor_id, limite: Math.min(limite, 50) }), { verPersonales: false });
-      return filas.map((b) => ({ fecha: b.fecha, usuario: b.usuario, entidad: b.entidad, entidad_id: b.entidad_id, accion: b.accion, motivo: b.motivo, origen: b.origen, cambios: b.cambios_json ? JSON.parse(b.cambios_json) : null }));
+      // Regla 8 y D4: el modelo nunca recibe datos personales ni el monto de la OS, ni siquiera cuando el usuario es ADMIN.
+      const filas = servicio.sanearBitacora(await servicio.repo.listarBitacora({ consultor_id: c && c.consultor_id, proyecto_id: !c && ctx && ctx.proyecto ? ctx.proyecto.proyecto_id : undefined, limite: Math.min(limite, 50) }), { verPersonales: false, verMonto: () => false });
+      // los textos libres (partes diarios, observaciones, motivos) pueden traer DNI, teléfonos o correos: se redactan
+      const limpio = (t) => (t ? redactarPersonales(String(t)).texto : t);
+      const cambios = (j) => { if (!j) return null; try { return JSON.parse(limpio(typeof j === 'string' ? j : JSON.stringify(j))); } catch { return null; } };
+      return filas.map((b) => ({ fecha: b.fecha, usuario: b.usuario, entidad: b.entidad, entidad_id: b.entidad_id, accion: b.accion, motivo: limpio(b.motivo), origen: b.origen, cambios: cambios(b.cambios_json) }));
     },
 
     async proponer_cambios(entrada, ctx) {
@@ -331,7 +419,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     const propio = d.consultores.find((c) => c.consultor_id === ctx.ambito.consultor_id);
     if (!propio) throw new Error('Su cuenta no está vinculada a un profesional');
     const ajena = 'Solo puede consultar su propia información.';
-    if (['detalle_consultor', 'listar_alertas', 'consultar_bitacora', 'consultar_historial_adendas'].includes(nombre)) {
+    if (['detalle_consultor', 'listar_alertas', 'consultar_bitacora', 'consultar_historial_adendas', 'consultar_partes_diarios'].includes(nombre)) {
       if (entrada.clave && String(entrada.clave).toUpperCase() !== propio.clave.toUpperCase()) throw new Error(ajena);
       return EJECUTORES[nombre]({ ...entrada, clave: propio.clave }, ctx);
     }
@@ -351,7 +439,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     throw new Error(`La herramienta ${nombre} no está disponible para su perfil`);
   }
 
-  async function conversar({ conversacion_id, texto, usuario, consultor_id }) {
+  async function conversar({ conversacion_id, texto, usuario, consultor_id, proyecto_id = null }) {
     const api = obtenerCliente();
     const ambito = usuario.rol === 'PROFESIONAL' ? { consultor_id: usuario.consultor_id } : null;
     if (ambito) {
@@ -376,10 +464,14 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     ];
     await servicio.repo.agregarMensaje({ conversacion_id: conv.conversacion_id, rol: 'user', contenido_json: { texto } });
 
-    const ctx = { conversacion_id: conv.conversacion_id, usuario: usuario.correo, propuestas: [], ambito };
     const propio = ambito ? datosParam.consultores.find((c) => c.consultor_id === ambito.consultor_id) : null;
+    // Proyecto en pantalla: el del menú lateral (o, para el PROFESIONAL, el suyo); acota las herramientas y el prompt
+    const enFicha = consultor_id ? datosParam.consultores.find((c) => c.consultor_id === Number(consultor_id)) : null;
+    const pid = propio ? propio.proyecto_id : proyecto_id ? Number(proyecto_id) : enFicha ? enFicha.proyecto_id : null;
+    const proyecto = pid ? (datosParam.proyectos || []).find((x) => x.proyecto_id === pid && x.activo !== 0 && x.activo !== false) || null : null;
+    const ctx = { conversacion_id: conv.conversacion_id, usuario: usuario.correo, propuestas: [], ambito, proyecto };
     const aviso = propio ? `\n\nPERFIL PROFESIONAL: esta persona es ${propio.nombres} (clave ${propio.clave}). Responda únicamente sobre su propia información (su vigencia, adendas, plan, actividades, alertas y bitácora). Si pregunta por otros profesionales o por el portafolio, indique que su perfil solo permite consultar su propia información. No proponga cambios: puede actualizar el estado y el avance de sus actividades desde su ficha.` : '';
-    const herramientas = ambito ? HERRAMIENTAS.filter((t) => t.name !== 'proponer_cambios') : HERRAMIENTAS;
+    const herramientas = ambito ? HERRAMIENTAS.filter((t) => !['proponer_cambios', 'resumen_proyectos'].includes(t.name)) : HERRAMIENTAS;
     const uso = { entrada: 0, salida: 0 };
     const herramientasUsadas = [];
     let respuesta;
@@ -387,7 +479,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
       respuesta = await api.messages.create({
         model: modelo,
         max_tokens: config.ia.maxTokens,
-        system: [{ type: 'text', text: `${SISTEMA}\n\nFecha de corte vigente: ${ff(hoy)}. Usuario: ${usuario.nombre} (rol ${usuario.rol}).${aviso}`, cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: `${sistemaPara(proyecto)}\n\nFecha de corte vigente: ${ff(hoy)}. Usuario: ${usuario.nombre} (rol ${usuario.rol}).${aviso}`, cache_control: { type: 'ephemeral' } }],
         tools: herramientas,
         messages: mensajes,
       });
@@ -400,7 +492,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
         herramientasUsadas.push(b.name);
         let salida;
         try {
-          if (!EJECUTORES[b.name] || (ambito && b.name === 'proponer_cambios')) throw new Error(`Herramienta desconocida: ${b.name}`);
+          if (!EJECUTORES[b.name] || (ambito && ['proponer_cambios', 'resumen_proyectos'].includes(b.name))) throw new Error(`Herramienta desconocida: ${b.name}`);
           salida = ambito ? await ejecutarAcotado(b.name, b.input || {}, ctx) : await EJECUTORES[b.name](b.input || {}, ctx);
         } catch (err) {
           salida = { error: err.message };
@@ -481,7 +573,7 @@ function crearAgente({ servicio, cliente: clienteInyectado = null }) {
     };
   }
 
-  return { conversar, aplicarPropuesta, extraerDocumento, HERRAMIENTAS, EJECUTORES, SISTEMA };
+  return { conversar, aplicarPropuesta, extraerDocumento, HERRAMIENTAS, EJECUTORES, SISTEMA, sistemaPara };
 }
 
 module.exports = { crearAgente };

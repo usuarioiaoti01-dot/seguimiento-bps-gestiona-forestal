@@ -704,11 +704,17 @@ async function crearApp() {
 
   // ------------------------------------------------------------ carga de documentos (Jefe de Proyecto y Administrador)
   const MAX_DOCUMENTO = 50 * 1024 * 1024;
+  // ?proyecto_id=: plantilla del proyecto (su nombre, sus profesionales y, sin adendas, sin esa hoja)
   app.get('/api/documentos/plantilla.xlsx', seg.requiere('JEFE_PROYECTO'), (req, res, next) => {
-    plantillaXlsx().then((buf) => {
-      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="plantilla-actualizacion.xlsx"', 'Cache-Control': 'no-store' });
+    (async () => {
+      const d = await servicio.datos();
+      const proyecto = req.query.proyecto_id ? d.proyectos.find((p) => p.proyecto_id === Number(req.query.proyecto_id) && p.activo !== 0 && p.activo !== false) || null : null;
+      const profesionales = proyecto ? d.consultores.filter((c) => c.proyecto_id === proyecto.proyecto_id && c.activo !== 0 && c.activo !== false).sort((a, b) => a.clave.localeCompare(b.clave)).map((c) => ({ clave: c.clave, nombres: c.nombres })) : [];
+      const buf = await plantillaXlsx({ proyecto, profesionales });
+      const archivo = `plantilla-actualizacion${proyecto ? `-${String(proyecto.codigo).replace(/[^A-Za-z0-9-]/g, '')}` : ''}.xlsx`;
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${archivo}"`, 'Cache-Control': 'no-store' });
       res.send(buf);
-    }).catch(next);
+    })().catch(next);
   });
   app.post('/api/documentos/previsualizar', seg.requiere('JEFE_PROYECTO'), express.raw({ type: 'application/octet-stream', limit: MAX_DOCUMENTO }), h(async (req) => {
     let nombre = '';
@@ -741,7 +747,7 @@ async function crearApp() {
     const texto = String((req.body && req.body.texto) || '').trim();
     if (!texto) throw Object.assign(new Error('Escriba una consulta'), { estado: 400 });
     if (texto.length > 4000) throw Object.assign(new Error('La consulta es demasiado larga'), { estado: 400 });
-    return agente.conversar({ conversacion_id: req.body.conversacion_id, texto, usuario: req.usuario, consultor_id: req.body.consultor_id });
+    return agente.conversar({ conversacion_id: req.body.conversacion_id, texto, usuario: req.usuario, consultor_id: req.body.consultor_id, proyecto_id: req.body.proyecto_id });
   }));
   app.post('/api/ia/aplicar', seg.requiere('EDITOR'), h((req) => agente.aplicarPropuesta(req.body.propuesta_id, req.usuario)));
 
