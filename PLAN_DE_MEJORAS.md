@@ -418,7 +418,8 @@ Pendiente:
   hasta configurarlo: falta la cuenta remitente, su contraseña de aplicación (o una cuenta de servicio con delegación de
   dominio) y abrir la salida a `smtp.gmail.com:465` desde el servidor (docs/DESPLIEGUE_v02.md, parte D).
 - **Penalidad referencial** (R-OS6): confirmar la fórmula y el tope con Abastecimiento antes de programarla.
-- Inicio de sesión con Google Workspace (SSO).
+- Inicio de sesión con Google Workspace (SSO): **programado el 25/11/2026**, desactivado hasta que el administrador de Workspace
+  cree el cliente OAuth (docs/DESPLIEGUE_v02.md, parte E). La clave local se mantiene.
 ---
 
 ## 11. Decisiones del usuario (24/11/2026)

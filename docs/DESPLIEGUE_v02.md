@@ -143,6 +143,24 @@ Desde el commit que lo agrega, la aplicación usa la dependencia `nodemailer`: a
 
 ---
 
+## E. Ingreso con Google Workspace
+
+Opcional y desactivado por defecto; la clave local sigue funcionando para todas las cuentas.
+
+1. **Cliente OAuth** (lo crea el administrador de Google Workspace / Google Cloud de SERFOR):
+   - Pantalla de consentimiento OAuth de tipo **Interno** (solo cuentas de la organización).
+   - Credencial «ID de cliente de OAuth» de tipo **Aplicación web**, con la URI de redirección autorizada
+     `https://serforia.serfor.gob.pe/api/auth/google/retorno` (la de `URL_APLICACION` + `/api/auth/google/retorno`).
+   - Alcances: `openid`, `email` y `profile` (no se pide acceso a Gmail ni a Drive).
+2. **Red:** salida HTTPS (443) del servidor a `accounts.google.com`, `oauth2.googleapis.com` y `www.googleapis.com`.
+3. **.env**: `SSO_GOOGLE=true`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_DOMINIO=serfor.gob.pe` y
+   `URL_APLICACION`. Con HTTPS, `COOKIE_SEGURA=true`. Reiniciar el servicio.
+4. Comprobar: en la pantalla de ingreso aparece «Ingresar con Google (@serfor.gob.pe)»; una cuenta creada por el
+   Administrador entra; una que no existe vuelve con «Su cuenta de Google no está registrada» y queda en la Bitácora
+   (`ACCESO_RECHAZADO`). Las cuentas se siguen creando en **Configuración → Usuarios** con el mismo correo institucional.
+
+---
+
 ## Volver atrás (si hiciera falta)
 Las tablas y columnas nuevas no estorban al código anterior. Basta con volver el código a `main` y reiniciar:
 ```powershell

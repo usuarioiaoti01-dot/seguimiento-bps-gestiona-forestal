@@ -22,6 +22,9 @@ if (!secreto) {
   secreto = crypto.randomBytes(32).toString('hex'); // solo desarrollo: las sesiones caducan al reiniciar
 }
 
+/** Clave derivada del secreto de sesión para otro propósito (p. ej. la cookie temporal del ingreso con Google). */
+const claveDerivada = (proposito) => crypto.createHmac('sha256', secreto).update(`sgf:${proposito}`).digest('hex');
+
 const claveValida = (c) => typeof c === 'string' && c.length >= 10 && /[A-Za-z]/.test(c) && /\d/.test(c);
 const generarClaveTemporal = () => `${crypto.randomBytes(6).toString('base64url')}9a`;
 
@@ -84,4 +87,4 @@ async function asegurarAdministrador(repo) {
   console.log(`[seguridad] Administrador inicial creado: ${correo}${generada ? ` · clave temporal: ${clave}` : ' (clave tomada de ADMIN_CLAVE_INICIAL)'} · se pedirá cambiarla al ingresar.`);
 }
 
-module.exports = { PERFILES, bcrypt, emitirSesion, leerSesion, requiere, exigirCabeceraApp, limitarIngreso, asegurarAdministrador, claveValida, generarClaveTemporal, COOKIE };
+module.exports = { PERFILES, bcrypt, claveDerivada, emitirSesion, leerSesion, requiere, exigirCabeceraApp, limitarIngreso, asegurarAdministrador, claveValida, generarClaveTemporal, COOKIE };

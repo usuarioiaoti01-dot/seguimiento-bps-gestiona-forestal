@@ -68,6 +68,14 @@ const config = {
     puerto: Number(e.CORREO_PUERTO || 465),
     urlAplicacion: (e.URL_APLICACION || 'https://serforia.serfor.gob.pe').replace(/\/+$/, ''),
   },
+  // Ingreso con Google Workspace (OpenID Connect). Desactivado hasta que se configure; la clave local sigue funcionando.
+  sso: {
+    google: bool(e.SSO_GOOGLE, false),
+    clienteId: (e.GOOGLE_CLIENT_ID || '').trim(),
+    secreto: e.GOOGLE_CLIENT_SECRET,
+    dominio: (e.GOOGLE_DOMINIO || 'serfor.gob.pe').trim().toLowerCase(),
+    urlRetorno: `${(e.URL_APLICACION || 'https://serforia.serfor.gob.pe').replace(/\/+$/, '')}/api/auth/google/retorno`,
+  },
   ia: {
     claveApi: e.ANTHROPIC_API_KEY,
     modelo: e.ANTHROPIC_MODELO || 'claude-haiku-5-5',

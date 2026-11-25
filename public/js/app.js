@@ -41,8 +41,27 @@ function pantallaIngreso() {
     <div class="campo"><label for="correo">Correo electrónico</label><input id="correo" name="correo" type="email" autocomplete="username" required></div>
     <div class="campo"><label for="clave">Clave</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
     <button class="btn prim" type="submit">Ingresar</button>
+    <div id="sso" hidden><div class="separador-sso"><span>o</span></div><a class="btn" id="b-google" href="/api/auth/google">Ingresar con Google</a></div>
     <p class="mut2" style="margin:0">Acceso restringido al personal autorizado. Las acciones quedan registradas en la bitácora.</p>
   </form></div>`;
+  // Ingreso con Google Workspace (si está configurado) y el motivo si el regreso de Google no prosperó
+  fetch('/api/auth/opciones', { credentials: 'same-origin' }).then((r) => r.json()).then((o) => {
+    if (!o.google) return;
+    document.getElementById('sso').hidden = false;
+    document.getElementById('b-google').textContent = `Ingresar con Google (@${o.dominio})`;
+  }).catch(() => { /* sin opciones: solo clave */ });
+  const error = new URLSearchParams(location.search).get('sso_error');
+  if (error) {
+    const MENSAJES = {
+      no_registrado: 'Su cuenta de Google no está registrada en la aplicación. Pida al Administrador que la cree.',
+      inactivo: 'Su cuenta está desactivada. Comuníquese con el Administrador.',
+      dominio: 'Use su cuenta institucional de Google Workspace.', correo: 'Google no confirmó el correo de la cuenta.',
+      cancelado: 'Se canceló el ingreso con Google.', estado: 'El ingreso con Google expiró. Intente de nuevo.',
+      desactivado: 'El ingreso con Google no está habilitado.',
+    };
+    aviso(MENSAJES[error] || 'No se pudo completar el ingreso con Google. Intente de nuevo o use su clave.', 'error');
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
   document.getElementById('f-ingreso').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;

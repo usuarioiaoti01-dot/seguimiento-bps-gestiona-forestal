@@ -28,6 +28,7 @@ const { crearCierre } = require('./cierre');
 const { construirReporte, generarPdfReporte, rangoMes } = require('./reporte-mensual');
 const { construirExpediente } = require('./documentos/expediente');
 const { crearAlertasCorreo } = require('./correo');
+const { crearSsoGoogle, COOKIE_OAUTH } = require('./sso-google');
 
 async function crearApp() {
   // El repositorio va envuelto: toda escritura respeta el alcance por proyecto del usuario (permisos.js, db/15)
@@ -155,6 +156,41 @@ async function crearApp() {
     return { usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol, cambiarClave: !!u.debe_cambiar_clave } };
   }));
   app.post('/api/auth/salir', (req, res) => { res.clearCookie(seg.COOKIE, { path: '/' }); res.json({ ok: true }); });
+
+  // Ingreso con Google Workspace (sso-google.js). Solo cuentas ya creadas por el Administrador y activas.
+  const sso = crearSsoGoogle({ config: config.sso, secreto: seg.claveDerivada('oauth') });
+  const COOKIE_SSO = { path: '/api/auth/google' };
+  app.get('/api/auth/opciones', (req, res) => res.json({ google: sso.activo(), dominio: config.sso.dominio }));
+  app.get('/api/auth/google', (req, res) => {
+    if (!sso.activo()) return res.status(404).json({ error: 'El ingreso con Google no está habilitado' });
+    const { url, cookie } = sso.iniciar();
+    res.cookie(COOKIE_OAUTH, cookie, { ...COOKIE_SSO, httpOnly: true, sameSite: 'lax', secure: config.sesion.cookieSegura, maxAge: 10 * 60000 });
+    return res.redirect(302, url);
+  });
+  app.get('/api/auth/google/retorno', seg.limitarIngreso, async (req, res) => {
+    const volver = (codigo) => res.redirect(302, `/?sso_error=${encodeURIComponent(codigo)}`);
+    const cookie = req.cookies && req.cookies[COOKIE_OAUTH];
+    res.clearCookie(COOKIE_OAUTH, COOKIE_SSO);
+    try {
+      const g = await sso.retorno({ code: req.query.code, state: req.query.state, error: req.query.error, cookie });
+      const u = await repo.buscarUsuario(g.correo);
+      if (!u || !u.activo) {
+        await repo.registrarBitacora({ usuario: g.correo, entidad: 'sesion', accion: 'ACCESO_RECHAZADO', origen: 'UI', motivo: `Ingreso con Google: ${u ? 'cuenta desactivada' : 'cuenta no registrada en la aplicación'}` });
+        return volver(u ? 'inactivo' : 'no_registrado');
+      }
+      req.limpiarIntentos();
+      const cambios = { ultimo_acceso: new Date() };
+      // Si tenía una clave temporal sin cambiar, deja de valer: quien entra con Google no la necesita y nadie más debe usarla
+      if (u.debe_cambiar_clave) Object.assign(cambios, { clave_hash: await seg.bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 11), debe_cambiar_clave: 0 });
+      await repo.actualizarUsuario(u.usuario_id, cambios);
+      seg.emitirSesion(res, { ...u, debe_cambiar_clave: 0 });
+      await repo.registrarBitacora({ usuario: u.correo, entidad: 'sesion', accion: 'ACCESO', origen: 'UI', motivo: 'Ingreso con Google Workspace' });
+      return res.redirect(302, '/');
+    } catch (err) {
+      if (!err.codigo || err.codigo === 'google') console.warn('[sso google]', err.message);
+      return volver(err.codigo || 'google');
+    }
+  });
   app.get('/api/auth/yo', (req, res) => {
     if (!req.usuario) return res.status(401).json({ error: 'Sesión no iniciada' });
     res.json({ usuario: { correo: req.usuario.correo, nombre: req.usuario.nombre, rol: req.usuario.rol, consultor_id: req.usuario.consultor_id ?? null, proyectos: req.usuario.proyectos || [], cambiarClave: !!req.usuario.cambiar }, ia: !!config.ia.claveApi, modo: repo.tipo });
