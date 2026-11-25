@@ -362,3 +362,40 @@ tbody.proy { border-top: 6px solid transparent; }
 .opciones-plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .opcion-plan { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 14px; border: 1px dashed var(--borde-fuerte, #9fb3a6); border-radius: 10px; background: var(--superficie-2, #f6f8f6); }
 .opcion-plan span { color: var(--texto-2); font-size: 13px; }
+
+/* Etapa 2: entregables de la Orden de Servicio */
+.tabla-ent { margin: 6px 0; }
+.tabla-ent input { width: 100%; box-sizing: border-box; }
+.tabla-ent td { vertical-align: middle; }
+.desc-mod { margin: 4px 0 0; color: var(--texto-2); font-size: 13px; }
+
+/* Etapa 3: partes diarios */
+.parte { border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; display: grid; gap: 6px; background: var(--superficie); }
+.parte.rectificado { opacity: .75; }
+.parte-cab { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.parte-cab .btn { margin-left: auto; }
+
+/* El atributo hidden siempre oculta (las clases con display no lo anulan) */
+[hidden] { display: none !important; }
+.tabla-entregables td small, .tabla-entregables td .mut2 { display: block; margin-top: 2px; }
+
+/* Etapa 4: tablero general */
+.filtros-port { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--borde); align-items: center; }
+.filtros-port select, .filtros-port input[type=search] { max-width: 220px; }
+.filtros-port .chk { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.tabla-port td small { display: block; margin-top: 2px; color: var(--texto-2); }
+.fila-enlace { cursor: pointer; }
+.fila-enlace:hover, .fila-enlace:focus { background: var(--superficie-2); outline: none; }
+.ldt { display: grid; gap: 6px; }
+.ldt-escala { display: flex; justify-content: space-between; font-size: 12px; color: var(--texto-2); margin-left: 260px; }
+.ldt-fila { display: grid; grid-template-columns: 250px 1fr; gap: 10px; align-items: center; }
+.ldt-et { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ldt-et small { display: block; color: var(--texto-2); font-size: 11px; }
+.ldt-pista { position: relative; height: 22px; background: var(--superficie-2); border-radius: 6px; }
+.ldt-barra { position: absolute; top: 7px; height: 8px; border-radius: 4px; background: var(--marca-2, var(--marca)); opacity: .55; }
+.ldt-hito { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--superficie); }
+.ldt-hoy { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--azul); }
+.ldt-ley { margin-top: 4px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ldt-ley-hoy { display: inline-block; width: 2px; height: 12px; background: var(--azul); }
+@media (max-width: 720px) { .ldt-fila { grid-template-columns: 1fr; } .ldt-escala { margin-left: 0; } }
+.tabla-port td:first-child { min-width: 240px; }

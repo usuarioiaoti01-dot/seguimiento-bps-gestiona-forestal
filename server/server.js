@@ -20,6 +20,12 @@ const { crearActividadDocs } = require('./actividad-docs');
 const { plantillaXlsx } = require('./documentos/plantilla');
 const { crearAlmacen } = require('./documentos/almacen');
 const permisos = require('./permisos');
+const modalidades = require('./modalidades');
+const { crearContrataciones } = require('./contrataciones');
+const { crearSupervision } = require('./supervision');
+const { construirPortafolio, totalesMonto } = require('./motor/portafolio');
+const { crearCierre } = require('./cierre');
+const { construirReporte, generarPdfReporte, rangoMes } = require('./reporte-mensual');
 
 async function crearApp() {
   // El repositorio va envuelto: toda escritura respeta el alcance por proyecto del usuario (permisos.js, db/15)
@@ -30,7 +36,7 @@ async function crearApp() {
     if (!c) { d = await servicio.datos(true); c = d.consultores.find((x) => x.consultor_id === Number(id)); }
     return c && c.proyecto_id ? Number(c.proyecto_id) : null;
   };
-  const repo = permisos.envolverRepositorio(await crearRepositorio(), { proyectoDeConsultor });
+  const repo = permisos.envolverRepositorio(await crearRepositorio(), { proyectoDeConsultor, datos: (forzar) => servicio.datos(forzar) });
   servicio = crearServicio(repo);
   const agente = crearAgente({ servicio });
   await seg.asegurarAdministrador(repo);
@@ -117,6 +123,12 @@ async function crearApp() {
   // Cada manejador corre dentro del alcance del usuario (permisos.js): el repositorio rechaza escrituras fuera de su equipo
   const h = (fn) => (req, res, next) => permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => Promise.resolve().then(() => fn(req, res)))
     .then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
+  const contrataciones = crearContrataciones({ servicio, repo, almacen, leerDocumento: leerArchivo, extraerTdrConIA: (a) => agente.extraerDocumento({ ...a, modo: 'tdr' }) });
+  const supervision = crearSupervision({ servicio, repo, almacen, contrataciones });
+  const cierre = crearCierre({ servicio, repo, almacen, contrataciones });
+  // El monto de la Orden de Servicio es confidencial (D4): solo el Administrador y el equipo del proyecto lo ven
+  const verMonto = async (req, consultorId) => permisos.puedeVerConfidencial(req.usuario, consultorId ? await proyectoDeConsultor(consultorId) : null);
+  const sinMonto = (k) => { if (k) delete k.monto; return k; };
   const motivoDe = (req) => { let m = ''; try { m = decodeURIComponent(req.get('X-Motivo') || '').trim(); } catch { /* cabecera mal codificada */ } return m; };
   const nombreDe = (req) => { let n = ''; try { n = decodeURIComponent(req.get('X-Nombre') || '').trim(); } catch { /* cabecera mal codificada */ } return n.slice(0, 200); };
 
@@ -243,7 +255,7 @@ async function crearApp() {
   app.get('/api/estado', seg.requiere('LECTOR'), h(async (req) => {
     const e = await servicio.estado({ corte: req.query.corte, proyecto_id: req.query.proyecto_id });
     return {
-      corte: e.corte, metodo: e.metodo, indicadores: e.indicadores, alertas: e.alertas,
+      corte: e.corte, metodo: e.metodo, indicadores: e.indicadores, alertas: e.alertas, resumen_entregables: e.entregables,
       consultores: e.consultores.map((it) => ({
         consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil,
         contrato: it.contrato && it.contrato.numero, expediente: it.contrato && it.contrato.expediente,
@@ -256,11 +268,14 @@ async function crearApp() {
         pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
         atrasadas: it.pronostico ? Object.values(it.pronostico.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion)).length : 0,
         alertas: e.alertas.filter((a) => a.consultor_id === it.consultor.consultor_id).length,
+        estado_contratacion: it.contrato ? it.contrato.estado_contratacion || null : null,
+        entregables: { total: it.entregables.length, vencidos: it.entregables.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables },
       })),
     };
   }));
   app.get('/api/consultores/:id', seg.requiere('LECTOR'), h(async (req) => {
     const det = await servicio.detalleConsultor(req.params.id, { verPersonales: req.usuario.rol === 'ADMIN', corte: req.query.corte });
+    if (!(await verMonto(req, det.consultor.consultor_id))) { det.contrato = sinMonto(det.contrato && { ...det.contrato }); det.contrataciones = (det.contrataciones || []).map((k) => sinMonto({ ...k })); }
     return { ...det, plan_pdf: det.plan ? planesPdf.info(det.plan.plan_id) : { existe: false } };
   }));
 
@@ -380,11 +395,14 @@ async function crearApp() {
   }));
   app.get('/api/bitacora', seg.requiere('LECTOR'), h(async (req) => {
     const filas = await repo.listarBitacora({ consultor_id: req.query.consultor_id, entidad: req.query.entidad, entidad_id: req.query.entidad_id, limite: req.query.limite });
-    return servicio.sanearBitacora(filas, { verPersonales: req.usuario.rol === 'ADMIN' });
+    const d = await servicio.datos();
+    const proyectoDe = new Map(d.consultores.map((c) => [c.consultor_id, c.proyecto_id]));
+    return servicio.sanearBitacora(filas, { verPersonales: req.usuario.rol === 'ADMIN', verMonto: (f) => permisos.puedeVerConfidencial(req.usuario, f.consultor_id ? proyectoDe.get(f.consultor_id) ?? null : null) });
   }));
   app.get('/api/historial/:entidad/:id', seg.requiere('LECTOR'), h(async (req) => {
     const filas = await repo.historialEntidad(req.params.entidad, req.params.id);
     if (req.usuario.rol !== 'ADMIN') for (const f of filas) { delete f.dni; delete f.telefono; delete f.correo_personal; }
+    if (req.params.entidad === 'contrato' && filas.length && !(await verMonto(req, filas[0].consultor_id))) for (const f of filas) delete f.monto;
     return filas;
   }));
   app.get('/api/parametros', seg.requiere('LECTOR'), h(async () => { const d = await servicio.datos(); return { parametros: d.parametros, feriados: d.feriados, corte_vigente: await servicio.corteVigente() }; }));
@@ -463,18 +481,113 @@ async function crearApp() {
     const proy = d.proyectos.find((p) => p.proyecto_id === Number(req.params.id) && p.activo !== 0);
     if (!proy) throw Object.assign(new Error('Proyecto no encontrado'), { estado: 404 });
     const e = await servicio.estado({ proyecto_id: proy.proyecto_id });
+    const conMonto = permisos.puedeVerConfidencial(req.usuario, proy.proyecto_id);
     return e.consultores.map((it) => {
       const k = it.contrato; const v = it.vigencia;
       const dias = v.dias_restantes;
-      const situacion = dias === null || dias === undefined ? 'SIN_PERIODO' : dias < 0 ? 'VENCIDA' : dias <= e.umbralVigencia ? 'POR_VENCER' : 'VIGENTE';
+      const situacion = k && k.estado_contratacion === 'REGISTRADA' && dias === null ? 'SIN_NOTIFICAR' : dias === null || dias === undefined ? 'SIN_PERIODO' : dias < 0 ? 'VENCIDA' : dias <= e.umbralVigencia ? 'POR_VENCER' : 'VIGENTE';
+      const pendientes = it.entregables.filter((x) => !['CONFORME', 'ANULADO'].includes(x.estado) && (!k || x.contrato_id === k.contrato_id));
+      const notif = k && almacen.vigente('NOTIFICACION', 'contrato', k.contrato_id);
       return {
         consultor_id: it.consultor.consultor_id, clave: it.consultor.clave, nombres: it.consultor.nombres, perfil: it.consultor.perfil, estado: it.consultor.estado,
         contrato_id: k ? k.contrato_id : null, numero: k ? k.numero : null, tipo_documento: (k && k.tipo_documento) || 'CONTRATO',
+        estado_contratacion: k ? k.estado_contratacion || null : null, fecha_registro: k ? k.fecha_registro || null : null,
+        fecha_notificacion: k ? k.fecha_notificacion || null : null, medio_notificacion: k ? k.medio_notificacion || null : null,
+        plazo_dias: k ? k.plazo_dias ?? null : null, fecha_inicio: k ? k.fecha_inicio || null : null, fecha_fin: k ? k.fecha_fin || null : null,
+        monto: conMonto && k ? k.monto ?? null : undefined, contrataciones: it.contratos.length, revision: k ? k.revision : null,
         fin_vigencia: v.fin_vigencia, dias_restantes: dias ?? null, situacion,
         documento: k ? contratosPdf.info(k.contrato_id) : { existe: false }, tdr: k ? tdrPdf.info(k.contrato_id) : { existe: false },
+        notificacion: notif ? { existe: true, documento_id: notif.documento_id } : { existe: false },
+        entregables: { total: it.entregables.filter((x) => !k || x.contrato_id === k.contrato_id).length, pendientes: pendientes.length, vencidos: pendientes.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables,
+          proximo: pendientes.filter((x) => x.fecha_limite).sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)).map((x) => ({ numero: x.numero, nombre: x.nombre, fecha_limite: x.fecha_limite, semaforo: x.semaforo, motivo: x.motivo }))[0] || null },
       };
     });
   }));
+  // ------------------------------------------------------------ contrataciones por Orden de Servicio (Etapa 2, db/17)
+  app.get('/api/modalidades', seg.requiere('LECTOR'), h(() => modalidades.publico()));
+  // PDF que se sube antes de registrar la OS o la notificación (queda en memoria una hora; se guarda al registrar)
+  // ?formato=evidencia admite también imágenes, Word y Excel (partes diarios y entregables, Etapa 3)
+  app.post('/api/documentos/temporales', seg.requiere('EDITOR'), express.raw({ type: () => true, limit: 15 * 1024 * 1024 }), h((req) => contrataciones.subirTemporal(req.body, nombreDe(req), ctx(req), { evidencia: req.query.formato === 'evidencia' })));
+  // Lectura del TDR con IA para precargar el registro (no escribe nada; el usuario revisa y confirma)
+  app.post('/api/contrataciones/leer-tdr', seg.requiere('EDITOR'), h((req) => contrataciones.leerTdr((req.body || {}).documento, ctx(req))));
+  app.post('/api/proyectos/:id/contrataciones', seg.requiere('EDITOR'), h(async (req) => {
+    const r = await contrataciones.registrar(req.params.id, req.body || {}, ctx(req));
+    return { ...r, contrato: { ...r.contrato } };
+  }));
+  app.get('/api/contratos/:id/entregables', seg.requiere('EDITOR'), h(async (req) => {
+    const d = await servicio.datos();
+    const k = d.contratos.find((x) => x.contrato_id === Number(req.params.id) && x.activo !== 0);
+    if (!k) throw Object.assign(new Error('Orden de Servicio no encontrada'), { estado: 404 });
+    const e = await servicio.estado();
+    const it = e.consultores.find((x) => x.consultor.consultor_id === k.consultor_id);
+    const contrato = { ...k };
+    if (!(await verMonto(req, k.consultor_id))) delete contrato.monto;
+    const docs = (x) => almacen.deEntidad('entregable_servicio', x.entregable_servicio_id).map((f) => ({ documento_id: f.documento_id, tipo: f.tipo, nombre: f.nombre_original, subido_en: f.subido_en }));
+    return { contrato, entregables: it ? it.entregables.filter((x) => x.contrato_id === k.contrato_id).map((x) => ({ ...x, documentos: docs(x) })) : [], corte: e.corte };
+  }));
+  app.post('/api/contratos/:id/entregables', seg.requiere('EDITOR'), h((req) => contrataciones.reemplazarEntregables(req.params.id, (req.body || {}).entregables, (req.body || {}).revision, ctx(req))));
+  app.post('/api/contratos/:id/notificacion/previsualizar', seg.requiere('EDITOR'), h((req) => contrataciones.previsualizarNotificacion(req.params.id, req.body || {})));
+  app.post('/api/contratos/:id/notificacion', seg.requiere('EDITOR'), h((req) => contrataciones.notificar(req.params.id, req.body || {}, ctx(req))));
+  // ------------------------------------------------------------ tablero general (Etapa 4): todos los proyectos
+  // Lo ven el Administrador y los Jefes de Proyecto (D2: todos los proyectos). El monto, solo en los proyectos propios (D4).
+  async function portafolio(req, corte = req.query.corte) {
+    const d = await servicio.datos();
+    const e = await servicio.estado({ corte });
+    const vivos = d.proyectos.filter((p) => p.activo !== 0 && p.activo !== false);
+    const equipos = Object.fromEntries(await Promise.all(vivos.map(async (p) => [p.proyecto_id, await servicio.equipoDe(p.proyecto_id)])));
+    const r = construirPortafolio(d, e, { equipos });
+    const alcance = permisos.alcanceDe(req.usuario);
+    for (const f of r.proyectos) {
+      f.escribe = permisos.puedeEscribirProyecto(alcance, f.proyecto_id);
+      f.mio = req.usuario.rol === 'ADMIN' || (req.usuario.proyectos || []).includes(f.proyecto_id);
+      if (!permisos.puedeVerConfidencial(req.usuario, f.proyecto_id)) { delete f.monto_comprometido; delete f.monto_conforme; }
+    }
+    return { ...r, montos: totalesMonto(r.proyectos), datos: d, estado: e };
+  }
+  const sinInternos = ({ datos, estado, ...r }) => r; // la foto y el estado completos no salen por la API
+  app.get('/api/portafolio', seg.requiere('EDITOR'), h(async (req) => sinInternos(await portafolio(req))));
+  // Reporte mensual para Gerencia (Etapa 5): corte al último día del mes (o hoy si el mes está en curso)
+  async function reporteMensual(req) {
+    const hoy = hoyLima();
+    const mes = req.query.mes || hoy.slice(0, 7);
+    const { desde, hasta } = rangoMes(mes);
+    if (desde > hoy) throw Object.assign(new Error('El mes aún no empieza'), { estado: 400 });
+    const p = await portafolio(req, hasta < hoy ? hasta : hoy);
+    const partes = await repo.listarPartes({ desde, hasta, limite: 1000 });
+    return construirReporte({ mes, datos: p.datos, estado: p.estado, portafolio: p, partes, montos: p.montos, generado_por: req.usuario.nombre || req.usuario.correo, generado_en: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' }) });
+  }
+  app.get('/api/reportes/mensual', seg.requiere('EDITOR'), h((req) => reporteMensual(req)));
+  app.get('/api/reportes/mensual.pdf', seg.requiere('EDITOR'), (req, res, next) => {
+    permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => reporteMensual(req)).then(generarPdfReporte).then((buf) => {
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="reporte-mensual-${req.query.mes || hoyLima().slice(0, 7)}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'" });
+      res.send(buf);
+    }).catch(next);
+  });
+  app.get('/api/portafolio.csv', seg.requiere('EDITOR'), (req, res, next) => {
+    permisos.ejecutarConAlcance(permisos.alcanceDe(req.usuario), () => portafolio(req)).then((r) => {
+      const cols = ['codigo', 'proyecto', 'modalidad', 'estado', 'gestion', 'unidad_usuaria', 'responsable', 'avance', 'semaforo', 'os_en_ejecucion', 'os_sin_notificar', 'entregables_pendientes', 'entregables_vencidos', 'conformidades_fuera_de_plazo', 'proximo_entregable', 'fecha_limite', 'ultimo_parte', 'alertas_altas', 'monto_comprometido', 'monto_conforme'];
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const num = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
+      const filas = [cols.join(';'), ...r.proyectos.map((f) => [f.codigo, f.nombre, f.modalidad, f.estado, f.area_tecnica, f.unidad_usuaria, f.responsable, num(f.avance), f.semaforo, f.os_en_ejecucion, f.os_sin_notificar,
+        f.entregables.pendientes, f.entregables.vencidos, f.entregables.revision_vencida, f.proximo_entregable ? `${f.proximo_entregable.numero}. ${f.proximo_entregable.nombre}` : '', f.proximo_entregable ? f.proximo_entregable.fecha_limite : '',
+        f.ultimo_parte, f.alertas.altas, num(f.monto_comprometido), num(f.monto_conforme)].map(esc).join(';'))];
+      res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="tablero_general_${r.resumen.corte}.csv"`, 'Cache-Control': 'private, no-store' });
+      res.send(`\ufeff${filas.join('\r\n')}`);
+    }).catch(next);
+  });
+
+  // ------------------------------------------------------------ supervisión diaria y entregables (Etapa 3, db/18)
+  app.get('/api/proyectos/:id/partes', seg.requiere('EDITOR'), h((req) => supervision.listarPartes(req.params.id, { consultor_id: req.query.consultor_id, desde: req.query.desde, hasta: req.query.hasta, limite: req.query.limite })));
+  app.post('/api/proyectos/:id/partes', seg.requiere('EDITOR'), h((req) => supervision.registrarParte(req.params.id, req.body || {}, ctx(req))));
+  app.post('/api/entregables/:id/presentar', seg.requiere('EDITOR'), h((req) => supervision.presentar(req.params.id, req.body || {}, ctx(req))));
+  app.post('/api/entregables/:id/observar', seg.requiere('EDITOR'), h((req) => supervision.observar(req.params.id, req.body || {}, ctx(req))));
+  app.post('/api/entregables/:id/conformidad', seg.requiere('EDITOR'), h((req) => supervision.conformidad(req.params.id, req.body || {}, ctx(req))));
+  // término anticipado de una OS y cierre formal del proyecto (Etapa 5)
+  app.post('/api/contratos/:id/resolver', seg.requiere('EDITOR'), h((req) => contrataciones.resolver(req.params.id, req.body || {}, ctx(req))));
+  app.post('/api/contratos/:id/anular', seg.requiere('EDITOR'), h((req) => contrataciones.anular(req.params.id, req.body || {}, ctx(req))));
+  app.get('/api/proyectos/:id/cierre', seg.requiere('EDITOR'), h((req) => cierre.evaluar(req.params.id)));
+  app.post('/api/proyectos/:id/cierre', seg.requiere('EDITOR'), h((req) => cierre.cerrar(req.params.id, req.body || {}, ctx(req))));
+  app.post('/api/contratos/:id/ampliacion', seg.requiere('EDITOR'), h((req) => contrataciones.ampliarPlazo(req.params.id, req.body || {}, ctx(req))));
   // PDF de la Orden de Servicio (o contrato) y de los Términos de Referencia de cada profesional: contrato_id
   const contratoDe = async (id) => {
     const d = await servicio.datos();

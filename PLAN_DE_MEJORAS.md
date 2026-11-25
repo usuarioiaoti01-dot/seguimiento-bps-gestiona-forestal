@@ -307,7 +307,27 @@ Ajustes respecto de lo planeado:
 - **Pedido para Claude Code:**
   > Lee `PLAN_DE_MEJORAS.md` y ejecuta la Etapa 1 completa siguiendo los criterios C4, C5, C6, C7, C13 y C14. Empieza por la prueba de regresión de GF2026.
 
-### Etapa 2 — Modalidad y registro estándar con Orden de Servicio
+### Etapa 2 — Modalidad y registro estándar con Orden de Servicio — ✔ HECHA (24/11/2026, sin commit)
+
+Resultado: `db/16_modalidad_proyecto.sql`, `db/17_orden_servicio_entregables.sql`, `server/modalidades.js`,
+`server/motor/plazos.js`, `server/motor/entregables.js`, `server/contrataciones.js`, alertas de entregables en `estado.js`,
+vista `public/js/vistas/orden-servicio.js` (registro de la OS, notificación con vista previa de fechas, ampliación y
+entregables) y 117 pruebas (`test/contrataciones.test.js` y reglas R-OS1 a R-OS5 en `test/motor.test.js`).
+Ajustes respecto de lo planeado:
+- Los PDF del TDR y de la OS se suben antes de registrar a un **área temporal** (`/api/documentos/temporales`, en memoria
+  una hora) y el registro los toma por su ficha; así el registro exige ambos documentos sin cargar archivos grandes en JSON.
+- Se agregó `contrato.fecha_registro` (para la alerta de OS sin notificar) y la alerta `ENTREGABLE_EN_RIESGO`
+  (las actividades del plan terminarían después de la fecha límite).
+- Un profesional puede tener varias OS: la vigente es la más reciente y la vigencia sale de los periodos de todas
+  (así también se ven los días sin cobertura entre una OS y la siguiente). No puede tener dos OS sin notificar a la vez.
+- La ampliación de plazo no mueve las fechas límite de los entregables (se advierte); corregir la notificación sí
+  corre las ampliaciones ya registradas.
+- Las características `con_*` ya no se eligen: se derivan de la modalidad. El registro antiguo con fechas a mano
+  (`/profesionales`) y «Renovar» solo quedan para la modalidad Contrato con adendas.
+- La penalidad referencial (R-OS6) **no** se programó: falta confirmar la fórmula con Abastecimiento.
+- Pendiente para la Etapa 3: presentación, observación, subsanación y conformidad de entregables; paso automático
+  a CONCLUIDO; vincular actividades del plan a sus entregables desde la formulación.
+
 - **Archivos:** `db/16_modalidad_proyecto.sql`, `db/17_orden_servicio_entregables.sql`, `server/modalidades.js`,
   `server/motor/plazos.js`, `server/motor/entregables.js`, `server/servicio.js` (`registrarContratacion` reemplaza a
   `registrarProfesional` en la modalidad OS; `renovarContratacion` reemplaza a `ampliarOrdenServicio`; `ampliarPlazo` aparte),
@@ -321,7 +341,24 @@ Ajustes respecto de lo planeado:
 - **Pedido para Claude Code:**
   > Lee `PLAN_DE_MEJORAS.md` y ejecuta la Etapa 2 (secciones 2, 3, 5, 6 y criterios C1–C3, C8–C12). Mantén GF2026 como modalidad CONTRATO_ADENDAS sin cambios en su comportamiento.
 
-### Etapa 3 — Supervisión diaria y conformidad de entregables
+### Etapa 3 — Supervisión diaria y conformidad de entregables — ✔ HECHA (24/11/2026, sin commit)
+
+Resultado: `db/18_parte_diario.sql`, `server/supervision.js`, alertas `SIN_PARTE_DIARIO` y `CONFORMIDAD_FUERA_DE_PLAZO`,
+vista `public/js/vistas/supervision.js` (opción «Supervisión diaria» de cada proyecto), acciones de cada entregable en la
+ventana «Entregables», entregable de cada actividad en «Formular Plan de Trabajo» y 118 pruebas (`test/supervision.test.js`).
+Ajustes respecto de lo planeado:
+- No se creó `server/supervision.js` «por servicio.js»: lee todo ANTES de abrir la transacción y escribe con el
+  repositorio (en SQL Server una lectura completa dentro de la transacción esperaría a sus propios bloqueos). Usa las
+  mismas reglas del avance (`servicio.consolidarActividad`, `avanceDeSubs`).
+- El parte solo registra avance de actividades del plan APROBADO; sin plan aprobado admite solo la descripción.
+- La alerta de parte faltante se limita a la modalidad Orden de Servicio (GF2026 puede registrar partes, pero no se le
+  exige; así su estado calculado no cambia).
+- Conforme el último entregable: OS CULMINADA, profesional CULMINADO (si no tiene otra OS abierta) y, si era la última OS
+  del proyecto, proyecto CONCLUIDO (cambio automático con origen SISTEMA).
+- `permisos.js`: se corrigió la versión que releía toda la base en cada escritura (se colgaría dentro de una transacción
+  en SQL Server); ahora resuelve el proyecto con la foto tomada antes de la transacción y los registros creados en ella.
+- Pendiente: cierre formal (P9: informe de cierre y lecciones aprendidas) y el tablero general (Etapa 4).
+
 - **Archivos:** `db/18_parte_diario.sql`, `server/supervision.js` (partes diarios, presentación, observación, subsanación y
   conformidad, todo por `servicio.js` y en una transacción), rutas en `server.js`, `public/js/vistas/partes.js` (formulario
   rápido: actividades del plan con su avance actual, evidencias por arrastre de archivos, historial del proyecto),
@@ -330,19 +367,49 @@ Ajustes respecto de lo planeado:
 - **Pruebas:** parte que actualiza el avance y la bitácora en una transacción; parte de otro proyecto → 403; rectificación; ciclo observado → subsanado → conforme; OS culminada al quedar conforme el último entregable.
 - **Hecho cuando:** un Jefe de Proyecto del equipo registra su parte del día con evidencias en menos de un minuto y el pronóstico y el semáforo se actualizan.
 
-### Etapa 4 — Tablero general
+### Etapa 4 — Tablero general — ✔ HECHA (24/11/2026, sin commit)
+
+Resultado: `server/motor/portafolio.js` (función pura sobre `construirEstado`), `GET /api/portafolio` y
+`/api/portafolio.csv`, vista `public/js/vistas/portafolio.js` («Tablero general», pantalla de inicio `#/` del
+Administrador y de los Jefes de Proyecto) y 120 pruebas (`test/portafolio.test.js`). Sin scripts de base de datos.
+Ajustes respecto de lo planeado:
+- El tablero de cada proyecto pasó a `#/plazos` y ya no dice «Gestiona Forestal 2026» en los proyectos nuevos
+  (GF2026 conserva su título y el gráfico «GESTIÓN DE LAS ADENDAS Y CONTRATOS 2026»).
+- La línea de tiempo es propia (una barra por OS en ejecución con sus entregables como hitos y la fecha de corte);
+  no se reutilizó `VigenciaTimeline`, pensado para la vigencia de los profesionales.
+- Semáforo del proyecto = el peor entre sus entregables pendientes y la vigencia de sus profesionales activos.
+- El monto solo aparece (tarjeta, tabla y CSV) en los proyectos del equipo del usuario; el Administrador ve todos.
+- Pendiente: el reporte mensual en PDF para Gerencia (Etapa 5).
+
 - **Archivos:** `server/motor/portafolio.js`, `GET /api/portafolio`, `public/js/vistas/portafolio.js` (ruta `#/` para
   ADMIN/JEFE; el actual «Adendas - Plazos» pasa a ser una opción de GF2026), exportación a CSV/Excel, `app.js` (menú: *Tablero
   general* arriba del grupo *Proyectos*).
 - **Pruebas:** indicadores con proyectos en cada estado; el Jefe ve todos y el filtro «Mis proyectos» funciona; el monto solo aparece en los proyectos propios; el PROFESIONAL no accede; GF2026 con sus indicadores de vigencia.
 - **Hecho cuando:** la Dirección ve en una pantalla todos los proyectos en curso y los terminados, con semáforo, avance y próximos vencimientos.
 
-### Etapa 5 — Complementos
-- Lectura del **TDR con IA** (herramienta `registrar_tdr`: antecedentes, objetivo, alcance, actividades y entregables con
-  plazos) para precargar el registro y el plan, con vista previa y confirmación. Requiere abrir la salida a `api.anthropic.com:443` en 10.6.1.77.
-- **Correo de alertas** diario (P11) y **reporte mensual** en PDF para Gerencia.
-- **Cierre del proyecto** (P9) con su informe y lecciones aprendidas; inicio de sesión con Google Workspace (SSO).
+### Etapa 5 — Complementos — en curso (25/11/2026, sin commit)
 
+Hecho (127 pruebas; sin scripts de base de datos nuevos). Revisión de código del 25/11/2026: la edición genérica de la OS ya no toca sus datos de contratación ni sus periodos, la corrección de entregables sube la revisión de la OS, una OS culminada o resuelta no genera alertas de vencimiento y el cierre no retira el informe si falla el recálculo posterior:
+- **Cierre formal (P9):** `server/cierre.js`, `GET/POST /api/proyectos/:id/cierre`, botón «Cerrar proyecto». Exige: ninguna
+  OS abierta, entregables con conformidad (o anulados por resolución), ningún profesional ACTIVO, informe de cierre (PDF,
+  tipo INFORME_CIERRE en el almacén) y lecciones aprendidas. Lo hacen el Administrador o el equipo; ya no se cierra
+  editando el proyecto (`servicio.js` lo rechaza).
+- **Término anticipado de una OS:** «Resolver» (en ejecución → RESUELTA; anula los entregables pendientes con el motivo;
+  culmina al profesional y, si era la última OS abierta, concluye el proyecto) y «Anular» (registrada sin notificar →
+  ANULADA; el profesional queda NO_RENOVADO si no tiene otra contratación).
+- **Reporte mensual para Gerencia:** `server/reporte-mensual.js`, `GET /api/reportes/mensual(.pdf)?mes=AAAA-MM` (corte al
+  último día del mes, o hoy si está en curso): resumen, proyectos, hechos del mes (OS notificadas, culminadas o resueltas;
+  entregables presentados, observados y conformes; partes; cierres) y alertas altas. Botón en el Tablero general.
+  El monto, solo de los proyectos que el usuario puede ver.
+- **Lectura del TDR con IA:** herramienta `registrar_tdr` del asistente, `POST /api/contrataciones/leer-tdr` y botón «Leer
+  el TDR con IA» en el registro de la OS: precarga objeto, perfil, plazo y entregables (con % de pago) para que el usuario
+  los revise; no escribe nada y no envía datos personales. Requiere `ANTHROPIC_API_KEY` y la salida a api.anthropic.com.
+
+Pendiente:
+- **Correo de alertas** diario (P11): requiere definir el servidor de correo institucional (SMTP o Google Workspace),
+  la cuenta remitente y agregar una dependencia de envío; además, abrir la salida desde el servidor de aplicaciones.
+- **Penalidad referencial** (R-OS6): confirmar la fórmula y el tope con Abastecimiento antes de programarla.
+- Inicio de sesión con Google Workspace (SSO).
 ---
 
 ## 11. Decisiones del usuario (24/11/2026)

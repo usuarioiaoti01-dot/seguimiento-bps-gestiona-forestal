@@ -67,7 +67,7 @@ async function formulario(el, consultorId) {
       <div class="cuerpo sin tabla-env"><table>
         <thead><tr><th></th><th>N.°</th><th style="min-width:300px">Actividad</th><th style="min-width:220px">Producto / evidencia verificable</th><th>Documentos</th><th>Inicio</th><th>Fin</th><th class="d">Días háb.</th><th></th></tr></thead>
         ${d.actividades.map((a) => `<tbody class="grupo${a.agregada_por ? ' de-jefe' : ''}" data-id="${a.actividad_id}"><tr class="act-cab"><td>${subDe(a).length ? '<button type="button" class="btn peq desplegar" data-desplegar aria-expanded="true" title="Mostrar u ocultar las subactividades">▾</button>' : ''}</td><td class="num"><b>${esc(a.numero)}</b></td>
-          <td class="desc"><b style="white-space:pre-wrap">${esc(a.descripcion)}</b>${a.agregada_por ? `<div><span class="marca-jefe">Agregada por ${a.agregada_por === 'ADMIN' ? 'el Administrador' : 'el Jefe de Proyecto'}</span></div>` : ''}</td>
+          <td class="desc"><b style="white-space:pre-wrap">${esc(a.descripcion)}</b>${a.agregada_por ? `<div><span class="marca-jefe">Agregada por ${a.agregada_por === 'ADMIN' ? 'el Administrador' : 'el Jefe de Proyecto'}</span></div>` : ''}${(() => { const en = (d.entregables || []).find((x) => x.entregable_servicio_id === a.entregable_servicio_id); return en ? `<div><span class="badge b-azul" title="Entregable del TDR al que aporta">Entregable ${en.numero}: ${esc(en.nombre)}</span></div>` : ''; })()}</td>
           <td class="desc" style="white-space:pre-wrap">${subDe(a).length ? '' : esc(a.producto || '')}</td>
           <td>${(a.documentos || []).map((x) => `<a class="doc-pdf" href="/api/formulacion/actividades/${a.actividad_id}/documentos/${x.n}" target="_blank" rel="noopener" title="${esc(x.nombre)}">${esc(x.nombre)}</a>`).join('') || '<span class="mut2">—</span>'}</td>
           <td class="num"><b>${ff(a.inicio_plan)}</b></td><td class="num"><b>${ff(a.fin_plan)}</b></td><td class="d num"><b>${a.dias_habiles}</b></td>
@@ -116,7 +116,7 @@ async function formulario(el, consultorId) {
   /** Registro de una actividad (nueva o existente) con sus subactividades y documentos PDF; se graba al aceptar. */
   const pedirActividad = async (a) => {
     const per = d.periodo;
-    let v = a || { descripcion: '', producto: '', dias_plan: '' };
+    let v = a || { descripcion: '', producto: '', dias_plan: '', entregable_servicio_id: '' };
     let subs = a ? subDe(a) : [];
     const fila = (t = '', dias = '', prod = '') => `<div class="fila-sub"><div class="sub-cab"><div class="sub-txt"><label class="sub-et">Subactividad</label><input name="sub" maxlength="300" value="${esc(t)}" placeholder="Subactividad"></div><div><label class="sub-et" style="text-align:center">Días</label><input class="dias2" name="sub_dias" type="number" min="1" max="99" step="1" value="${esc(dias)}" aria-label="Días hábiles de la subactividad"></div><button type="button" class="btn peq" data-quitar-sub>Quitar</button></div><label class="sub-et">Evidencia</label><textarea name="sub_prod" maxlength="500" placeholder="Producto / evidencia verificable de la subactividad">${esc(prod)}</textarea></div>`;
     for (;;) {
@@ -125,6 +125,7 @@ async function formulario(el, consultorId) {
         contenido: `<div class="form">
           <div class="campo ancho"><label>Actividad</label><textarea name="descripcion" maxlength="1000">${esc(v.descripcion)}</textarea></div>
           <div class="campo"><label>Días Totales</label><input class="dias2" type="number" name="dias_plan" min="1" max="99" step="1" value="${esc(v.dias_plan ?? '')}"></div>
+          ${(d.entregables || []).length ? `<div class="campo ancho"><label>Entregable del TDR al que aporta</label><select name="entregable_servicio_id"><option value="">— Ninguno —</option>${d.entregables.map((x) => `<option value="${x.entregable_servicio_id}" ${Number(v.entregable_servicio_id) === x.entregable_servicio_id ? 'selected' : ''}>Entregable ${x.numero}: ${esc(x.nombre)} (${x.plazo_dias} días)</option>`).join('')}</select></div>` : ''}
           <div class="campo"><label>Total del plan</label><div class="mut" style="padding-top:8px">${d.resumen.total_dias - (a ? Number(a.dias_habiles) || 0 : 0)} de ${per.dias_habiles} días hábiles ya asignados a otras actividades</div></div>
           <div class="campo ancho"><label>Subactividades <span class="mut2" id="sub-total"></span></label><div id="subs">${subs.map((s) => fila(s.texto, s.dias, s.producto)).join('')}</div><div><button type="button" class="btn peq" id="b-sub">Agregar subactividad</button></div></div>
           <div class="campo ancho" id="c-producto"><label>Producto / evidencia verificable</label><textarea name="producto" maxlength="1000" placeholder="Ej.: Informe de pruebas con casos y resultados; código fuente en GitLab">${esc(v.producto || '')}</textarea></div>
@@ -157,7 +158,7 @@ async function formulario(el, consultorId) {
       if (r.valor !== 'ok') { if (a) await recargar(); return; }
       subs = [...r.form.querySelectorAll('.fila-sub')].map((f) => ({ texto: f.querySelector('[name=sub]').value.trim(), dias: f.querySelector('[name=sub_dias]').value === '' ? null : Number(f.querySelector('[name=sub_dias]').value), producto: f.querySelector('[name=sub_prod]').value.trim() })).filter((x) => x.texto || x.dias || x.producto);
       const archivos = [...(r.form.querySelector('[name=archivos]').files || [])];
-      v = { descripcion: r.datos.descripcion, producto: r.datos.producto, dias_plan: r.datos.dias_plan === '' ? null : Number(r.datos.dias_plan) };
+      v = { descripcion: r.datos.descripcion, producto: r.datos.producto, dias_plan: r.datos.dias_plan === '' ? null : Number(r.datos.dias_plan), ...('entregable_servicio_id' in r.datos ? { entregable_servicio_id: r.datos.entregable_servicio_id ? Number(r.datos.entregable_servicio_id) : null } : {}) };
       try {
         let id;
         if (a) { await api('PATCH', `/formulacion/actividades/${a.actividad_id}`, { ...v, subactividades: subs, revision: a.revision }); id = a.actividad_id; }

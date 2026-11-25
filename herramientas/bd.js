@@ -12,7 +12,7 @@ const config = require('../server/config');
 
 const c = config.sqlserver;
 const DB = path.join(config.raiz, 'db');
-const ORDEN = ['01_esquema.sql', '02_vistas.sql', '03_seguridad.sql', '04_datos_iniciales.sql', '06_historial_adendas.sql', '07_perfiles_usuario.sql', '08_aprobacion_plan.sql', '09_formulacion_plan.sql', '10_subactividades.sql', '11_actividad_agregada_por.sql', '12_proyectos.sql', '13_proyecto_caracteristicas.sql', '14_documento.sql', '15_equipo_proyecto.sql', '05_verificacion.sql'];
+const ORDEN = ['01_esquema.sql', '02_vistas.sql', '03_seguridad.sql', '04_datos_iniciales.sql', '06_historial_adendas.sql', '07_perfiles_usuario.sql', '08_aprobacion_plan.sql', '09_formulacion_plan.sql', '10_subactividades.sql', '11_actividad_agregada_por.sql', '12_proyectos.sql', '13_proyecto_caracteristicas.sql', '14_documento.sql', '15_equipo_proyecto.sql', '16_modalidad_proyecto.sql', '17_orden_servicio_entregables.sql', '18_parte_diario.sql', '05_verificacion.sql'];
 
 async function conectar() {
   const faltan = ['servidor', 'base', 'usuario', 'clave'].filter((k) => !c[k]);

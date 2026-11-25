@@ -377,7 +377,7 @@ test('Proyectos: alta, validaciones, profesional dentro del proyecto y filtro po
   assert.equal((await admin('POST', '/api/proyectos', {})).estado, 400, 'sin nombre');
   assert.equal((await admin('POST', '/api/proyectos', { nombre: 'Sistema integrado de apoyo', fecha_inicio: '2026-06-01', fecha_fin: '2026-01-01' })).estado, 400, 'fechas invertidas');
   // el código lo genera el sistema: lo que envíe el cliente se ignora
-  const nuevo = await admin('POST', '/api/proyectos', { codigo: 'MIO', nombre: 'Sistema integrado de apoyo a la fiscalización', financiador: 'BID', fecha_inicio: '2026-06-01', fecha_fin: '2027-06-01' });
+  const nuevo = await admin('POST', '/api/proyectos', { codigo: 'MIO', nombre: 'Sistema integrado de apoyo a la fiscalización', financiador: 'BID', fecha_inicio: '2026-06-01', fecha_fin: '2027-06-01', modalidad: 'CONTRATO_ADENDAS', motivo_atipico: 'Proyecto de prueba con contrato y adendas' });
   assert.equal(nuevo.estado, 200, JSON.stringify(nuevo.cuerpo));
   const anio = new Date().toISOString().slice(0, 4);
   assert.match(nuevo.cuerpo.codigo, new RegExp(`^PRY-${anio}-001$`), 'código autogenerado y correlativo');
@@ -421,10 +421,21 @@ test('Proyectos: alta, validaciones, profesional dentro del proyecto y filtro po
   assert.equal((await jefe('GET', `/api/linea-base?proyecto_id=${pid}`)).cuerpo.length, 0);
 
   // no se cierra con profesionales activos; sí cuando ya no hay
-  assert.equal((await admin('PATCH', `/api/proyectos/${pid}`, { estado: 'CERRADO', revision: nuevo.cuerpo.revision })).estado, 409);
+  assert.equal((await admin('PATCH', `/api/proyectos/${pid}`, { estado: 'CERRADO', revision: nuevo.cuerpo.revision })).estado, 409, 'el cierre no se hace editando el proyecto');
+  const informe = async () => (await (await fetch(`${base}/api/documentos/temporales`, { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', Cookie: admin.cookie() }, body: Buffer.from('%PDF-1.4\n%%EOF\n') })).json()).token;
+  const lecciones = 'La coordinación semanal con el área usuaria evitó retrasos en las pruebas.';
+  let req = (await admin('GET', `/api/proyectos/${pid}/cierre`)).cuerpo;
+  assert.equal(req.puede_cerrar, false, 'con profesionales activos no se cierra');
+  assert.equal((await admin('POST', `/api/proyectos/${pid}/cierre`, { informe: await informe(), lecciones_aprendidas: lecciones, revision: nuevo.cuerpo.revision })).estado, 409);
   await jefe('PATCH', `/api/consultores/${ok.cuerpo.consultor.consultor_id}`, { estado: 'CULMINADO', revision: ok.cuerpo.consultor.revision });
-  const cerrado = await admin('PATCH', `/api/proyectos/${pid}`, { estado: 'CERRADO', revision: nuevo.cuerpo.revision });
+  req = (await admin('GET', `/api/proyectos/${pid}/cierre`)).cuerpo;
+  assert.equal(req.puede_cerrar, true, JSON.stringify(req.requisitos));
+  assert.equal((await admin('POST', `/api/proyectos/${pid}/cierre`, { informe: await informe(), lecciones_aprendidas: 'corto', revision: req.proyecto.revision })).estado, 400, 'exige las lecciones aprendidas');
+  assert.equal((await admin('POST', `/api/proyectos/${pid}/cierre`, { lecciones_aprendidas: lecciones, revision: req.proyecto.revision })).estado, 400, 'exige el informe de cierre');
+  const cerrado = await admin('POST', `/api/proyectos/${pid}/cierre`, { informe: await informe(), lecciones_aprendidas: lecciones, revision: req.proyecto.revision });
   assert.equal(cerrado.estado, 200, JSON.stringify(cerrado.cuerpo));
+  assert.equal(cerrado.cuerpo.fila.estado, 'CERRADO');
+  assert.ok((await admin('GET', `/api/proyectos/${pid}/cierre`)).cuerpo.informe, 'el informe queda en el almacén');
   assert.equal((await jefe('POST', `/api/proyectos/${pid}/profesionales`, { ...alta, clave: 'ABC', contrato_numero: '902-2026-TEST' })).estado, 409, 'proyecto cerrado');
   assert.ok((await jefe('GET', '/api/bitacora?entidad=proyecto')).cuerpo.some((b) => b.accion === 'CREAR'), 'el alta del proyecto queda en la bitácora');
 });
@@ -462,51 +473,18 @@ test('Proyectos sin adendas ni línea base: Orden de Servicio, documentos y cont
   assert.deepEqual([sinProf.cuerpo.con_profesionales, sinProf.cuerpo.con_adendas, sinProf.cuerpo.con_orden_servicio, sinProf.cuerpo.con_tdr], [0, 0, 0, 0]);
   assert.equal((await jefe('POST', `/api/proyectos/${sinProf.cuerpo.proyecto_id}/profesionales`, { clave: 'SIN', nombres: 'Persona Sin Proyecto', contrato_numero: 'OS-000' })).estado, 409);
 
+  // con personal por Orden de Servicio: el registro es otro (test/contrataciones.test.js); el antiguo, con fechas a mano, ya no aplica
   const p = await admin('POST', '/api/proyectos', { nombre: 'Proyecto con personal por Orden de Servicio', con_profesionales: 1, con_adendas: 0, con_linea_base: 0, con_orden_servicio: 1, con_tdr: 1 });
   assert.equal(p.estado, 200);
+  assert.equal(p.cuerpo.modalidad, 'ORDEN_SERVICIO');
   assert.deepEqual([p.cuerpo.con_adendas, p.cuerpo.con_linea_base, p.cuerpo.con_orden_servicio, p.cuerpo.con_tdr], [0, 0, 1, 1]);
   const pid = p.cuerpo.proyecto_id;
   await integrar(j.usuario.usuario_id, pid);
-  const datosOS = { clave: 'OSA', nombres: 'Olga Sánchez Arce', perfil: 'Analista funcional', contrato_numero: 'OS-0123-2026' };
-  assert.equal((await jefe('POST', `/api/proyectos/${pid}/profesionales`, datosOS)).estado, 400, 'la Orden de Servicio exige su periodo');
-  const alta = await jefe('POST', `/api/proyectos/${pid}/profesionales`, { ...datosOS, adenda_inicio: '2026-10-01', adenda_plazo_dias: 30 });
-  assert.equal(alta.estado, 200, JSON.stringify(alta.cuerpo));
-  assert.equal(alta.cuerpo.contrato.tipo_documento, 'ORDEN_SERVICIO');
-  assert.equal(alta.cuerpo.adenda.fecha_fin, '2026-10-30');
-
-  const lista = (await jefe('GET', `/api/proyectos/${pid}/profesionales`)).cuerpo;
-  assert.equal(lista.length, 1);
-  assert.equal(lista[0].tipo_documento, 'ORDEN_SERVICIO');
-  assert.equal(lista[0].situacion, 'VENCIDA', 'se controla el vencimiento de la Orden de Servicio');
-  assert.equal(lista[0].documento.existe, false);
-  const e1 = (await jefe('GET', `/api/estado?proyecto_id=${pid}`)).cuerpo;
-  assert.ok(e1.alertas.some((a) => a.codigo === 'VIGENCIA_VENCIDA' && a.titulo === 'Orden de Servicio vencida'), 'alerta propia de la Orden de Servicio');
-
-  // documentos PDF: Orden de Servicio y Términos de Referencia
-  const kid = lista[0].contrato_id;
-  const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
-  const subir = (ruta, cuerpo) => fetch(`${base}/api/contratos/${kid}/${ruta}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', Cookie: jefe.cookie() }, body: cuerpo });
-  assert.equal((await subir('documento', Buffer.from('no es pdf'))).status, 400);
-  assert.equal((await subir('documento', pdf)).status, 200);
-  assert.equal((await subir('tdr', pdf)).status, 200);
-  const ver = await fetch(`${base}/api/contratos/${kid}/documento`, { headers: { Cookie: jefe.cookie() } });
-  assert.equal(ver.status, 200);
-  assert.match(ver.headers.get('content-type'), /pdf/);
-  const lista2 = (await jefe('GET', `/api/proyectos/${pid}/profesionales`)).cuerpo;
-  assert.equal(lista2[0].documento.existe, true);
-  assert.equal(lista2[0].tdr.existe, true);
-
-  // renovación: el nuevo periodo empieza al día siguiente y mueve el vencimiento
-  assert.equal((await jefe('POST', `/api/proyectos/${pid}/profesionales/${lista[0].consultor_id}/renovar`, {})).estado, 400, 'sin plazo ni fin');
-  const ren = await jefe('POST', `/api/proyectos/${pid}/profesionales/${lista[0].consultor_id}/renovar`, { os_numero: 'OS-0456-2026', plazo_dias: 60 });
-  assert.equal(ren.estado, 200, JSON.stringify(ren.cuerpo));
-  assert.equal(ren.cuerpo.fecha_inicio, '2026-10-31');
-  assert.equal(ren.cuerpo.fecha_fin, '2026-12-29');
-  assert.equal((await jefe('POST', `/api/proyectos/${pid}/profesionales/${lista[0].consultor_id}/renovar`, { inicio: '2026-11-15', plazo_dias: 10 })).estado, 400, 'no puede superponerse');
-  // en un proyecto con adendas la renovación se hace con adendas
-  const inicial = (await jefe('GET', '/api/proyectos')).cuerpo[0];
+  assert.equal((await jefe('POST', `/api/proyectos/${pid}/profesionales`, { clave: 'OSA', nombres: 'Olga Sánchez Arce', contrato_numero: 'OS-0123-2026', adenda_inicio: '2026-10-01', adenda_plazo_dias: 30 })).estado, 409);
+  // en un proyecto con adendas (GF2026) la renovación se hace con adendas
+  const inicial = (await jefe('GET', '/api/proyectos')).cuerpo.find((x) => x.codigo === 'GF2026');
   const cInicial = (await jefe('GET', `/api/estado?proyecto_id=${inicial.proyecto_id}`)).cuerpo.consultores[0];
   assert.equal((await jefe('POST', `/api/proyectos/${inicial.proyecto_id}/profesionales/${cInicial.consultor_id}/renovar`, { plazo_dias: 10 })).estado, 409);
-  // las características no cambian con profesionales registrados
-  assert.equal((await admin('PATCH', `/api/proyectos/${pid}`, { con_adendas: 1, revision: p.cuerpo.revision })).estado, 409);
+  // con profesionales registrados no cambia la modalidad
+  assert.equal((await admin('PATCH', `/api/proyectos/${inicial.proyecto_id}`, { modalidad: 'ORDEN_SERVICIO', revision: inicial.revision })).estado, 409);
 });

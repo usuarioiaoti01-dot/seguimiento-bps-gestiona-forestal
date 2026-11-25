@@ -30,11 +30,11 @@ Usuarios: Director de TI (perfil **ADMIN**, «Dirección OTI»), Jefes de Proyec
 
 | Dónde | Qué contiene |
 |---|---|
-| **GitHub y producción** — commit `a3e6890` (17/11/2026) | Formulación del plan por etapas, subactividades con avance propio, actividades agregadas por el Jefe, PDF del plan y «Plan Aprobado», Actualizar Desde Archivo (límite 50 MB). |
+| **Producción** — rama `seguimiento-bps-gestiona-forestal-v.02`, commit `53c92f0` (Etapa 1) | La base `SGF_SEGUIMIENTO` se **reinstaló a propósito** el 24/11/2026 a las 19:20 (cuentas y bitácora anteriores no se conservan) y el DBA ejecutó `db/12`–`db/18` el 25/11/2026 (verificado: 51/51). El servicio se reinició el 25/11/2026 y existe la cuenta del administrador principal (debe cambiar su clave). Faltan las cuentas de los Jefes de Proyecto, sus equipos y desplegar las Etapas 2–5 (sin commit). |
 | **Solo en el equipo local, sin commit** | Todo lo de «Proyectos»: `db/12`, `db/13`, menú lateral por proyecto, características del proyecto, Orden de Servicio y TDR, registro del plan desde documento, nueva denominación, este handoff, `PLAN_DE_MEJORAS.md` y la **Etapa 1** (24/11/2026): `db/14` almacén documental, `db/15` equipo por proyecto y permisos, transacciones compuestas, migración de documentos. |
 
 - Repositorio: `https://github.com/usuarioiaoti01-dot/seguimiento-bps-gestiona-forestal` (cuenta institucional de la OTI; público por decisión del usuario). 16 commits en `main`.
-- Pruebas: **111** (`npm test`), todas pasando. Código ≈ 7 000 líneas de JS (servidor + cliente).
+- Pruebas: **127** (`npm test`), todas pasando. Código ≈ 7 000 líneas de JS (servidor + cliente).
 - Modo de trabajo acordado: el usuario prueba en `localhost:3080`; **solo se sube a GitHub cuando dice «sube los cambios al gh»**; no se pide aprobación de un plan antes de ejecutar (prevalece sobre `CLAUDE.md` §5). Los cambios llegan a producción con `git pull` + reinicio del servicio.
 
 ---
@@ -110,10 +110,13 @@ Relaciones: `proyecto 1—N consultor 1—N contrato 1—N adenda`; `consultor 1
 | 07 | Perfiles de usuario y vínculo cuenta↔consultor | Sí |
 | 08–09 | Aprobación del plan; formulación (estados y cabecera) | Sí |
 | 10–11 | `dias_plan` y `subactividades`; `agregada_por` | Sí |
-| 12 | `proyecto`, `consultor.proyecto_id` (pasa los consultores a `GF2026`) | **No** |
-| 13 | Banderas del proyecto, `contrato.tipo_documento`, `plan_trabajo.documento_origen` | **No** |
-| 14 | `sgf.documento`: metadatos del almacén documental (SHA-256, versión, confidencial) | **No** |
-| 15 | `sgf.proyecto_miembro`: equipo de cada proyecto (migra a los JEFE_PROYECTO activos a todos los proyectos) | **No** |
+| 12 | `proyecto`, `consultor.proyecto_id` (pasa los consultores a `GF2026`) | Sí (24/11/2026) |
+| 13 | Banderas del proyecto, `contrato.tipo_documento`, `plan_trabajo.documento_origen` | Sí (24/11/2026) |
+| 14 | `sgf.documento`: metadatos del almacén documental (SHA-256, versión, confidencial) | Sí (24/11/2026) |
+| 15 | `sgf.proyecto_miembro`: equipo de cada proyecto (migra a los JEFE_PROYECTO activos a todos los proyectos) | Sí (24/11/2026) |
+| 16 | Modalidad y estados del proyecto (GF2026 = CONTRATO_ADENDAS atípico; ACTIVO → EN_EJECUCION) | Sí (25/11/2026) |
+| 17 | Orden de Servicio con notificación, monto y estado; `sgf.entregable_servicio`; `adenda.tipo_periodo`; parámetros de entregables | Sí (25/11/2026) |
+| 18 | Partes diarios (solo inserción), `entregable_servicio.fecha_subsanacion`, parámetros de supervisión | Sí (25/11/2026) |
 
 Regla: todo cambio de estructura = nuevo script `NN_descripcion.sql` + actualizar `entidades.js`, ambos repositorios y las pruebas; no se editan scripts ya ejecutados en producción. `herramientas/bd.js` instala `01`–`13` en una base vacía y `npm run bd:probar` verifica conexión y permisos. `data/semilla.json` y `db/04` se generan desde `herramientas/matriz_control.xlsx` (`npm run semilla`).
 

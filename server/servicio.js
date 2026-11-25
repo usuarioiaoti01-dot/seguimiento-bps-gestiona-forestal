@@ -8,7 +8,10 @@ const { aDia, aFecha: diaAFecha, hoyLima, crearCalendario } = require('./motor/c
 const { recalcularPlan } = require('./motor/recalculo');
 const { construirEstado, coberturaLineaBase, parametro } = require('./motor/estado');
 const { ENTIDADES, filtrarColumnas } = require('./datos/entidades');
+const { MODALIDADES, ESTADOS_PROYECTO, ESTADOS_ABIERTOS, modalidadDe, configDe } = require('./modalidades');
 
+// Columnas de la Orden de Servicio (db/17) que no se editan por la vía genérica (PATCH /api/contratos/:id)
+const COLUMNAS_CONTRATACION = ['fecha_notificacion', 'medio_notificacion', 'plazo_dias', 'fecha_fin', 'monto', 'estado_contratacion', 'contrato_anterior_id', 'fecha_culminacion', 'fecha_registro'];
 const ESTADOS_ACTIVIDAD = ['PENDIENTE', 'EN_CURSO', 'CONCLUIDA', 'SUSPENDIDA', 'ANULADA'];
 const CLASIFICACIONES = ['ALINEADA', 'REASIGNADA', 'NUEVA', 'TRANSVERSAL'];
 const ESTADOS_ADENDA = ['ANUNCIADA', 'EN_TRAMITE', 'FIRMADA', 'ANULADA', 'CONCLUIDA'];
@@ -333,22 +336,37 @@ function crearServicio(repo) {
       if (m.estado && !ESTADOS_CC.includes(m.estado)) throw error(400, 'Estado de control de cambios no válido');
     },
     proyecto: (f, previa = {}) => {
-      validarFechas(f, ['fecha_inicio', 'fecha_fin']);
+      validarFechas(f, ['fecha_inicio', 'fecha_fin', 'fecha_cierre']);
       const m = { ...previa, ...f };
       delete f.codigo; // el código lo genera el sistema y nadie lo modifica
-      for (const k of BANDERAS_PROYECTO) if (k in f) f[k] = f[k] ? 1 : 0;
-      const b = { ...previa, ...f };
-      if (b.con_profesionales === 0) Object.assign(f, { con_adendas: 0, con_linea_base: 0, con_orden_servicio: 0, con_tdr: 0 }); // sin profesionales no hay contratos, adendas, línea base ni documentos del personal
+      // Las características (con_*) y es_atipico se derivan de la modalidad (db/16): no las elige el usuario
+      for (const k of BANDERAS_PROYECTO) delete f[k];
+      delete f.es_atipico;
+      if (f.modalidad !== undefined && f.modalidad !== null && f.modalidad !== modalidadDe(previa.proyecto_id ? previa : null) || (!previa.proyecto_id && f.modalidad)) {
+        if (!MODALIDADES[f.modalidad]) throw error(400, `Modalidad no válida (use: ${Object.keys(MODALIDADES).join(', ')})`);
+        Object.assign(f, MODALIDADES[f.modalidad].banderas, { es_atipico: MODALIDADES[f.modalidad].atipico ? 1 : 0 });
+      } else delete f.modalidad;
+      const modalidad = f.modalidad || modalidadDe(previa.proyecto_id ? previa : null);
+      if ('motivo_atipico' in f) f.motivo_atipico = f.motivo_atipico ? String(f.motivo_atipico).trim() : null;
+      const motivo = 'motivo_atipico' in f ? f.motivo_atipico : previa.motivo_atipico;
+      if (MODALIDADES[modalidad].atipico && (!motivo || motivo.length < 15)) throw error(400, 'El caso atípico (contrato con adendas) exige el motivo: al menos 15 caracteres');
+      for (const [k, max, nombre] of [['motivo_atipico', 500, 'El motivo del caso atípico'], ['unidad_usuaria', 200, 'La unidad usuaria'], ['objetivo', 1000, 'El objetivo'], ['lecciones_aprendidas', 2000, 'Las lecciones aprendidas']]) {
+        if (f[k] && String(f[k]).length > max) throw error(400, `${nombre} admite hasta ${max} caracteres`);
+      }
       if ('nombre' in f) { f.nombre = String(f.nombre || '').trim(); if (f.nombre.length < 5 || f.nombre.length > 300) throw error(400, 'El nombre del proyecto lleva de 5 a 300 caracteres'); }
       if (m.fecha_inicio && m.fecha_fin && String(m.fecha_fin) < String(m.fecha_inicio)) throw error(400, 'El fin del proyecto no puede ser anterior a su inicio');
-      if (f.estado && !['ACTIVO', 'CERRADO'].includes(f.estado)) throw error(400, 'Estado de proyecto no válido');
+      if (f.estado && !ESTADOS_PROYECTO.includes(f.estado)) throw error(400, `Estado de proyecto no válido (use: ${ESTADOS_PROYECTO.join(', ')})`);
       if (f.area_tecnica && !AREAS_TECNICAS.includes(f.area_tecnica) && f.area_tecnica !== previa.area_tecnica) throw error(400, `La gestión del proyecto debe ser una de: ${AREAS_TECNICAS.join(', ')}`);
       if (f.jefe_proyecto && !JEFES_PROYECTO.includes(f.jefe_proyecto) && f.jefe_proyecto !== previa.jefe_proyecto) throw error(400, `El jefe de proyecto debe ser uno de: ${JEFES_PROYECTO.join(', ')}`);
       for (const k of ['financiador', 'jefe_proyecto']) if (f[k] && String(f[k]).length > 300) throw error(400, `El campo ${k} es demasiado largo`);
       if (f.descripcion && String(f.descripcion).length > 1000) throw error(400, 'La descripción supera los 1000 caracteres');
     },
     linea_base_entregable: (f) => validarFechas(f, ['inicio_lb', 'fin_lb', 'fecha_corte_lb']),
-    contrato: (f) => validarFechas(f, ['fecha_inicio']),
+    contrato: (f) => {
+      // Los datos de la contratación (db/17) solo los escriben contrataciones.js y supervision.js, con sus reglas
+      for (const k of COLUMNAS_CONTRATACION) delete f[k];
+      validarFechas(f, ['fecha_inicio']);
+    },
     consultor: () => {},
   };
 
@@ -360,13 +378,37 @@ function crearServicio(repo) {
     if (!previa) throw error(404, 'Registro no encontrado');
     const f = filtrarColumnas(entidad, entrada);
     if (entidad === 'consultor' && ctx.rol !== 'ADMIN') for (const k of meta.personales) delete f[k];
+    if (entidad === 'adenda') {
+      delete f.tipo_periodo; // lo fija quien crea el periodo
+      // Los periodos de una Orden de Servicio salen de la notificación y de las ampliaciones (contrataciones.js)
+      if (['ORIGINAL', 'AMPLIACION'].includes(previa.tipo_periodo) && ['fecha_inicio', 'fecha_fin', 'plazo_dias', 'estado', 'contrato_id', 'activo'].some((k) => k in f && String(f[k] ?? '') !== String(previa[k] ?? ''))) {
+        throw error(409, 'Este periodo es de una Orden de Servicio: sus fechas se corrigen con «Corregir notificación» o «Ampliar plazo»');
+      }
+    }
     VALIDADORES[entidad](f, previa);
-    if (entidad === 'proyecto' && ['con_profesionales', 'con_adendas', 'con_linea_base'].some((k) => k in f && Number(f[k]) !== Number(previa[k])) && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0)) throw error(409, 'Con profesionales ya registrados no se puede cambiar si el proyecto tiene profesionales, adendas o línea base');
-    if (entidad === 'proyecto' && f.estado === 'CERRADO' && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0 && c.estado === 'ACTIVO')) throw error(409, 'No se puede cerrar el proyecto mientras tenga profesionales ACTIVOS: cambie su estado a CULMINADO o NO_RENOVADO');
+    if (entidad === 'proyecto' && f.modalidad && f.modalidad !== modalidadDe(previa) && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0)) throw error(409, 'Con profesionales ya registrados no se puede cambiar la modalidad del proyecto');
+    // El cierre formal (P9) se hace con «Cerrar proyecto» (cierre.js): exige el informe de cierre y las lecciones aprendidas
+    if (entidad === 'proyecto' && f.estado === 'CERRADO' && previa.estado !== 'CERRADO') throw error(409, 'Para cerrar el proyecto use «Cerrar proyecto»: verifica los requisitos y pide el informe de cierre y las lecciones aprendidas');
+    if (entidad === 'proyecto' && f.estado === 'ANULADO' && d.consultores.some((c) => c.proyecto_id === Number(id) && c.activo !== 0 && c.estado === 'ACTIVO')) throw error(409, 'No se puede anular el proyecto mientras tenga profesionales ACTIVOS: cambie su estado a CULMINADO o NO_RENOVADO');
     const consultor_id = entidad === 'proyecto' ? null : entidad === 'consultor' ? Number(id) : previa.consultor_id ?? consultorDe(d, { contrato_id: previa.contrato_id });
     const r = await repo.actualizar(entidad, id, f, { revision: entrada.revision, usuario: ctx.usuario, motivo: ctx.motivo, origen: ctx.origen, consultor_id });
     await recalcularYGuardar(ctx.usuario, `Cambio en ${entidad} ${id}`);
     return r;
+  }
+
+  /**
+   * Valida los datos de un profesional nuevo y devuelve la fila de sgf.consultor (sin escribir).
+   * La usan registrarProfesional y el registro de una Orden de Servicio (contrataciones.js).
+   */
+  function validarProfesionalNuevo(d, e, ctx, proy) {
+    const clave = String(e.clave || '').trim().toUpperCase();
+    if (!/^[A-Z]{2,5}$/.test(clave)) throw error(400, 'La clave del profesional lleva de 2 a 5 letras (p. ej. iniciales)');
+    if (d.consultores.some((c) => c.clave === clave)) throw error(409, `Ya existe un profesional con la clave ${clave}`);
+    const nombres = String(e.nombres || '').trim();
+    if (nombres.length < 5 || nombres.length > 150) throw error(400, 'Los nombres y apellidos llevan de 5 a 150 caracteres');
+    const cons = filtrarColumnas('consultor', { clave, nombres, perfil: e.perfil, recurso_cronograma: e.recurso_cronograma, sede: e.sede, correo_institucional: e.correo_institucional, observacion: e.observacion });
+    if (ctx.rol === 'ADMIN') Object.assign(cons, filtrarColumnas('consultor', { dni: e.dni, telefono: e.telefono, correo_personal: e.correo_personal }));
+    return Object.assign(cons, { proyecto_id: proy.proyecto_id, proyecto: String(proy.nombre).slice(0, 100), estado: 'ACTIVO' });
   }
 
   /**
@@ -378,8 +420,9 @@ function crearServicio(repo) {
     const e = entrada || {};
     const proy = d.proyectos.find((p) => p.proyecto_id === Number(e.proyecto_id) && p.activo !== 0);
     if (!proy) throw error(400, 'Seleccione el proyecto');
-    if (proy.estado === 'CERRADO') throw error(409, 'El proyecto está cerrado: no admite nuevos profesionales');
+    if (!ESTADOS_ABIERTOS.includes(proy.estado)) throw error(409, `El proyecto está ${String(proy.estado).toLowerCase().replace('_', ' ')}: no admite nuevos profesionales`);
     if (proy.con_profesionales === 0) throw error(409, 'Este proyecto se registró sin profesionales');
+    if (configDe(proy).inicio === 'NOTIFICACION') throw error(409, 'En la modalidad Orden de Servicio el profesional se registra con su Orden de Servicio, el TDR, el monto y los entregables («Registrar Orden de Servicio»)');
     const porOS = proy.con_orden_servicio === 1;
     const doc = porOS ? 'Orden de Servicio' : 'contrato';
     const clave = String(e.clave || '').trim().toUpperCase();
@@ -424,6 +467,7 @@ function crearServicio(repo) {
     const c = d.consultores.find((x) => x.consultor_id === Number(consultor_id) && x.activo !== 0);
     if (!c) throw error(404, 'Profesional no encontrado');
     const proy = d.proyectos.find((p) => p.proyecto_id === c.proyecto_id);
+    if (proy && configDe(proy).inicio === 'NOTIFICACION') throw error(409, 'En la modalidad Orden de Servicio use «Nueva Orden de Servicio» (otra contratación) o «Ampliación de plazo» de la Orden de Servicio vigente');
     if (proy && proy.con_adendas === 1) throw error(409, 'Este proyecto maneja adendas: registre una adenda en Contratos y adendas');
     const k = d.contratos.find((x) => x.consultor_id === c.consultor_id && x.activo !== 0);
     if (!k) throw error(409, 'El profesional no tiene Orden de Servicio registrada');
@@ -456,8 +500,11 @@ function crearServicio(repo) {
     if (!VALIDADORES[entidad]) throw error(400, 'Entidad no creable por esta vía');
     const d = await datos(true);
     const f = filtrarColumnas(entidad, entrada);
+    // Proyecto nuevo: modalidad ORDEN_SERVICIO salvo que se indique otra (o, por compatibilidad, que se deduzca de las características enviadas)
+    if (entidad === 'proyecto' && !f.modalidad) f.modalidad = BANDERAS_PROYECTO.some((k) => k in (entrada || {})) ? modalidadDe({ ...BANDERAS_DEFECTO, ...Object.fromEntries(BANDERAS_PROYECTO.filter((k) => k in f).map((k) => [k, f[k] ? 1 : 0])) }) : 'ORDEN_SERVICIO';
     VALIDADORES[entidad](f);
     if (entidad === 'adenda') {
+      f.tipo_periodo = 'ADENDA'; // los periodos ORIGINAL y AMPLIACION de una OS los crea solo contrataciones.js
       const k = d.contratos.find((x) => x.contrato_id === Number(f.contrato_id));
       if (!k) throw error(400, 'Contrato no encontrado');
       if (!f.numero) f.numero = Math.max(0, ...d.adendas.filter((a) => a.contrato_id === k.contrato_id).map((a) => a.numero)) + 1;
@@ -470,9 +517,7 @@ function crearServicio(repo) {
     if (entidad === 'proyecto') {
       if (!f.nombre) throw error(400, 'El nombre del proyecto es obligatorio');
       f.codigo = codigoProyectoNuevo(d); // lo asigna el sistema: único, correlativo por año y no editable
-      for (const [k, v] of Object.entries(BANDERAS_DEFECTO)) if (f[k] === undefined) f[k] = v;
-      if (f.con_profesionales === 0) Object.assign(f, { con_adendas: 0, con_linea_base: 0, con_orden_servicio: 0, con_tdr: 0 });
-      f.estado = f.estado || 'ACTIVO';
+      f.estado = f.estado || MODALIDADES[f.modalidad].estadoInicial;
     }
     if (entidad === 'plan_trabajo') {
       if (!f.consultor_id || !f.nombre) throw error(400, 'Consultor y nombre del plan son obligatorios');
@@ -597,7 +642,7 @@ function crearServicio(repo) {
     const cal = crearCalendario({ tipo: 'HABILES', feriados: d.feriados });
     const deps = it.plan ? d.dependencias.filter((x) => x.activo !== 0 && it.actividades.some((a) => a.actividad_id === x.actividad_id)) : [];
     return {
-      corte: e.corte, metodo: e.metodo, consultor, contrato: it.contrato,
+      corte: e.corte, metodo: e.metodo, consultor, contrato: it.contrato, contrataciones: it.contratos, entregables: it.entregables, semaforo_entregables: it.semaforo_entregables,
       adendas: [...it.adendas].sort((a, b) => a.numero - b.numero),
       plan: it.plan, pronostico: it.pronostico && { ...it.pronostico, actividades: undefined },
       vigencia: it.vigencia,
@@ -624,32 +669,35 @@ function crearServicio(repo) {
    * de bitácora. Sin `verPersonales` (rol distinto de ADMIN, o consumo por el modelo de IA)
    * los valores nunca salen del servidor. Devuelve copias; no modifica las filas originales.
    */
-  function sanearBitacora(filas, { verPersonales = false } = {}) {
+  /** Quita de la bitácora los datos personales (salvo ADMIN) y el monto de la OS a quien no es del equipo (`verMonto(fila)`). */
+  function sanearBitacora(filas, { verPersonales = false, verMonto = () => true } = {}) {
     if (verPersonales) return filas;
-    const prohibidas = new Set(ENTIDADES.consultor.personales);
-    const limpiar = (v) => {
-      if (Array.isArray(v)) return v.map(limpiar);
+    const personales = new Set(ENTIDADES.consultor.personales);
+    const conMonto = new Set([...personales, ...ENTIDADES.contrato.confidenciales]);
+    const limpiar = (v, prohibidas) => {
+      if (Array.isArray(v)) return v.map((x) => limpiar(x, prohibidas));
       if (v && typeof v === 'object') {
-        return Object.fromEntries(Object.entries(v).filter(([k]) => !prohibidas.has(k)).map(([k, x]) => [k, limpiar(x)]));
+        return Object.fromEntries(Object.entries(v).filter(([k]) => !prohibidas.has(k)).map(([k, x]) => [k, limpiar(x, prohibidas)]));
       }
       return v;
     };
     return filas.map((f) => {
       if (!f.cambios_json) return f;
+      const prohibidas = verMonto(f) ? personales : conMonto;
       const texto = typeof f.cambios_json === 'string';
       let obj = f.cambios_json;
       if (texto) { try { obj = JSON.parse(f.cambios_json); } catch { return { ...f, cambios_json: null }; } }
-      const limpio = limpiar(obj);
+      const limpio = limpiar(obj, prohibidas);
       return { ...f, cambios_json: texto ? JSON.stringify(limpio) : limpio };
     });
   }
 
   return {
     repo, datos, invalidar, estado, corteVigente, recalcularYGuardar, recalculoDiario,
-    AREAS_TECNICAS, JEFES_PROYECTO, registrarProfesional, ampliarOrdenServicio, actualizarActividad, actualizarSubactividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico, revisarPlan,
+    AREAS_TECNICAS, JEFES_PROYECTO, validarProfesionalNuevo, registrarProfesional, ampliarOrdenServicio, actualizarActividad, actualizarSubactividad, crearActividad, anularActividad, definirDependencias, simular, adoptarPronostico, revisarPlan,
     actualizarEntidad, crearEntidad, detalleConsultor, lineaBase, sanearBitacora,
     equipoDe, agregarMiembro, actualizarMiembro, quitarMiembro,
-    consolidarActividad, aDia,
+    consolidarActividad, aDia, subsDe, avanceDeSubs,
   };
 }
 

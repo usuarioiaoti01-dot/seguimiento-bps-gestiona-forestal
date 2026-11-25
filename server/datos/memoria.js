@@ -49,6 +49,30 @@ function migrarProyectos(db) {
   }
   for (const p of db.proyectos) {
     for (const [k, v] of Object.entries({ con_profesionales: 1, con_adendas: 1, con_linea_base: 1, con_orden_servicio: 0, con_tdr: 0 })) if (p[k] === undefined) p[k] = v;
+    // db/16: modalidad según las características; ACTIVO pasa a EN_EJECUCION
+    if (!p.modalidad) {
+      p.modalidad = p.con_profesionales === 0 ? 'GESTION_INTERNA' : p.con_adendas === 1 ? 'CONTRATO_ADENDAS' : 'ORDEN_SERVICIO';
+      p.es_atipico = p.modalidad === 'CONTRATO_ADENDAS' ? 1 : 0;
+      if (p.es_atipico && !p.motivo_atipico) {
+        p.motivo_atipico = p.codigo === 'GF2026'
+          ? 'Dirección de Control – Gestiona Forestal: equipo de profesionales BPS contratados desde 2025 con contrato y adendas sucesivas; cronograma propio (MS Project v3) financiado por KfW.'
+          : 'Proyecto con contrato y adendas registrado antes de la modalidad (db/16).';
+      }
+    }
+    if (p.estado === 'ACTIVO') p.estado = 'EN_EJECUCION';
+  }
+  // db/17: contrataciones existentes en ejecución, periodos existentes como ADENDA, parámetros de entregables
+  for (const k of db.contratos || []) if (!k.estado_contratacion) k.estado_contratacion = 'EN_EJECUCION';
+  for (const a of db.adendas || []) if (!a.tipo_periodo) a.tipo_periodo = 'ADENDA';
+  if (!db.entregables_servicio) db.entregables_servicio = [];
+  // db/18: partes diarios y parámetros de supervisión
+  if (!db.partes) db.partes = [];
+  if (!db.partes_items) db.partes_items = [];
+  for (const [codigo, valor, descripcion] of [['PLAZO_REVISION_DIAS', '7', 'Días calendario para dar la conformidad u observar un entregable presentado.'], ['PLAZO_SUBSANACION_DIAS', '5', 'Días calendario para subsanar una observación, si el TDR no fija otro plazo.'], ['PARTE_DIAS_ATRAS', '3', 'Días hábiles hacia atrás en que se puede registrar un parte diario sin justificación.'], ['UMBRAL_SIN_PARTE_DIAS', '3', 'Alerta cuando un profesional con Orden de Servicio en ejecución lleva más de estos días hábiles sin parte diario.']]) {
+    if (db.parametros && !db.parametros.some((x) => x.codigo === codigo)) db.parametros.push({ codigo, valor, descripcion });
+  }
+  for (const [codigo, valor, descripcion] of [['UMBRAL_ENTREGABLE_DIAS', '7', 'Alerta cuando faltan estos días o menos para la fecha límite de un entregable sin presentar.'], ['UMBRAL_BORRADOR_DIAS', '5', 'Alerta cuando una Orden de Servicio registrada lleva estos días o más sin notificación.']]) {
+    if (db.parametros && !db.parametros.some((x) => x.codigo === codigo)) db.parametros.push({ codigo, valor, descripcion });
   }
   for (const c of db.consultores || []) if (!c.proyecto_id) c.proyecto_id = db.proyectos[0].proyecto_id;
 }
@@ -118,7 +142,10 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
 
     async cargarTodo() {
       const out = {};
-      for (const k of ['proyectos', 'miembros', 'consultores', 'contratos', 'adendas', 'planes', 'actividades', 'dependencias', 'linea_base', 'controles_cambio', 'feriados', 'parametros']) {
+      const ultimos = {};
+      for (const p of db.partes || []) if (p.activo !== 0 && (!ultimos[p.consultor_id] || p.fecha > ultimos[p.consultor_id])) ultimos[p.consultor_id] = p.fecha;
+      out.ultimos_partes = Object.entries(ultimos).map(([consultor_id, ultimo]) => ({ consultor_id: Number(consultor_id), ultimo }));
+      for (const k of ['proyectos', 'miembros', 'entregables_servicio', 'consultores', 'contratos', 'adendas', 'planes', 'actividades', 'dependencias', 'linea_base', 'controles_cambio', 'feriados', 'parametros']) {
         out[k] = copia(db[k] || []);
       }
       return out;
@@ -130,6 +157,7 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
       const nueva = { ...fila, [meta.pk]: sig(db[meta.coleccion], meta.pk), activo: fila.activo ?? 1, modificado_por: usuario };
       if (entidad === 'documento' && !nueva.subido_en) nueva.subido_en = new Date().toISOString();
       if (entidad === 'proyecto_miembro' && !nueva.desde) nueva.desde = new Date().toISOString().slice(0, 10);
+      if (entidad === 'parte_diario' && !nueva.registrado_en) nueva.registrado_en = new Date().toISOString();
       if (!meta.sinRevision) nueva.revision = 1;
       db[meta.coleccion].push(nueva);
       bitacora({ usuario, entidad, entidad_id: nueva[meta.pk], consultor_id, accion: 'CREAR', cambios_json: { despues: fila }, motivo, origen });
@@ -137,7 +165,7 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
       return copia(nueva);
     },
 
-    async actualizar(entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR' } = {}) {
+    async actualizar(entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR', tocar = false } = {}) {
       const meta = ENTIDADES[entidad];
       const fila = db[meta.coleccion].find((x) => x[meta.pk] === Number(id));
       if (!fila) throw Object.assign(new Error('Registro no encontrado'), { estado: 404 });
@@ -149,7 +177,7 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
       for (const [k, v] of Object.entries(cambios)) {
         if (String(fila[k] ?? '') !== String(v ?? '')) { antes[k] = fila[k] ?? null; despues[k] = v; }
       }
-      if (!Object.keys(despues).length) return { fila: copia(fila), sinCambios: true };
+      if (!Object.keys(despues).length && !(tocar && !meta.sinRevision)) return { fila: copia(fila), sinCambios: true }; // `tocar`: sube la revisión sin cambios
       db.historial.push({ entidad, id: Number(id), valido_hasta: new Date().toISOString(), fila: copia(fila) });
       Object.assign(fila, cambios, { modificado_por: usuario });
       if (!meta.sinRevision) fila.revision += 1;
@@ -161,6 +189,13 @@ function crearRepositorioMemoria({ semilla, archivo } = {}) {
     async listarDocumentos({ entidad, entidad_id, tipo, proyecto_id, incluirRetirados = false } = {}) {
       return copia(db.documentos.filter((f) => (!entidad || f.entidad === entidad) && (!entidad_id || f.entidad_id === Number(entidad_id))
         && (!tipo || f.tipo === tipo) && (!proyecto_id || f.proyecto_id === Number(proyecto_id)) && (incluirRetirados || f.activo !== 0)));
+    },
+
+    async listarPartes({ proyecto_id, consultor_id, desde, hasta, limite = 200 } = {}) {
+      const partes = db.partes.filter((x) => x.activo !== 0 && (!proyecto_id || x.proyecto_id === Number(proyecto_id)) && (!consultor_id || x.consultor_id === Number(consultor_id))
+        && (!desde || x.fecha >= desde) && (!hasta || x.fecha <= hasta))
+        .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.parte_id - a.parte_id).slice(0, Math.min(Number(limite) || 200, 1000));
+      return copia(partes.map((x) => ({ ...x, items: db.partes_items.filter((i) => i.parte_id === x.parte_id && i.activo !== 0) })));
     },
 
     async proyectosDeUsuario(usuario_id) {

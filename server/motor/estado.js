@@ -5,11 +5,12 @@
  * base, alertas e indicadores. Es una función pura: recibe los datos y
  * devuelve el resultado, sin tocar la base de datos.
  */
-const { aDia } = require('./calendario');
+const { aDia, crearCalendario } = require('./calendario');
 
 const ESTADOS_SIN_SEGUIMIENTO = ['EN_FORMULACION', 'EN_REVISION_JEFE', 'EN_REVISION_ADMIN', 'OBSERVADO'];
 const { recalcularPlan, evaluarVigencia } = require('./recalculo');
 const { analizarCobertura } = require('./cobertura');
+const { evaluarEntregable, peorSemaforo, avanceEntregable } = require('./entregables');
 
 function parametro(datos, codigo, defecto) {
   const p = (datos.parametros || []).find((x) => x.codigo === codigo);
@@ -21,14 +22,22 @@ function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbr
   spiMinimo = Number(spiMinimo ?? parametro(datos, 'SPI_MINIMO', 0.4));
   umbralVigencia = Number(umbralVigencia ?? parametro(datos, 'UMBRAL_VIGENCIA_DIAS', 15));
   umbralHolgura = Number(umbralHolgura ?? parametro(datos, 'UMBRAL_HOLGURA_DIAS', 5));
+  const umbralEntregable = Number(parametro(datos, 'UMBRAL_ENTREGABLE_DIAS', 7));
+  const umbralBorrador = Number(parametro(datos, 'UMBRAL_BORRADOR_DIAS', 5));
+  const plazoRevision = Number(parametro(datos, 'PLAZO_REVISION_DIAS', 7));
+  const umbralSinParte = Number(parametro(datos, 'UMBRAL_SIN_PARTE_DIAS', 3));
   const feriados = (datos.feriados || []).map((f) => f.fecha);
 
   const consultores = datos.consultores.filter((c) => c.activo !== 0 && c.activo !== false && (!proyecto_id || c.proyecto_id === Number(proyecto_id)));
   const resultado = [];
 
   for (const c of consultores) {
-    const contrato = datos.contratos.find((k) => k.consultor_id === c.consultor_id && k.activo !== 0 && k.activo !== false) || null;
-    const adendas = contrato ? datos.adendas.filter((a) => a.contrato_id === contrato.contrato_id && a.activo !== 0 && a.activo !== false) : [];
+    // Un profesional puede tener varias Órdenes de Servicio sucesivas (db/17): la vigente es la más reciente y la
+    // vigencia sale de los periodos de todas ellas (así también se ven los días sin cobertura entre una OS y la siguiente).
+    const contratos = datos.contratos.filter((k) => k.consultor_id === c.consultor_id && k.activo !== 0 && k.activo !== false && k.estado_contratacion !== 'ANULADA').sort((x, y) => x.contrato_id - y.contrato_id);
+    const contrato = contratos[contratos.length - 1] || null;
+    const ids = new Set(contratos.map((k) => k.contrato_id));
+    const adendas = datos.adendas.filter((a) => ids.has(a.contrato_id) && a.activo !== 0 && a.activo !== false);
     const planes = datos.planes.filter((p) => p.consultor_id === c.consultor_id && p.activo !== 0 && p.activo !== false);
     const plan = planes.sort((x, y) => y.plan_id - x.plan_id)[0] || null;
     // Un plan en formulación o en revisión aún no genera seguimiento: arranca cuando el Administrador lo aprueba
@@ -38,11 +47,20 @@ function construirEstado(datos, { corte, metodo, spiMinimo, umbralVigencia, umbr
       : null;
     const vigencia = evaluarVigencia({ adendas, pronostico: pronostico && pronostico.numero_actividades ? pronostico : null, corte, umbralHolgura });
     const lb = datos.linea_base.filter((e) => e.consultor_id === c.consultor_id && e.activo !== 0 && e.activo !== false);
-    resultado.push({ consultor: c, contrato, adendas, plan, actividades, pronostico, vigencia, cobertura: analizarCobertura(adendas), linea_base: lb });
+    // Entregables del TDR (db/17): estado, semáforo y holgura frente al fin probable de las actividades que les aportan
+    const entregables = (datos.entregables_servicio || []).filter((e) => ids.has(e.contrato_id) && e.activo !== 0 && e.activo !== false)
+      .sort((x, y) => x.contrato_id - y.contrato_id || x.numero - y.numero)
+      .map((e) => {
+        const propias = actividades.filter((a) => a.entregable_servicio_id === e.entregable_servicio_id && !a.es_resumen && a.estado !== 'ANULADA');
+        const fines = propias.map((a) => pronostico && pronostico.actividades[a.actividad_id] && pronostico.actividades[a.actividad_id].fin_probable).filter(Boolean).sort();
+        return { ...e, ...evaluarEntregable(e, { corte, umbral: umbralEntregable, finProbable: fines[fines.length - 1] || null, plazoRevision }), avance: avanceEntregable(e, actividades), actividades: propias.length };
+      });
+    const ultimoParte = ((datos.ultimos_partes || []).find((x) => x.consultor_id === c.consultor_id) || {}).ultimo || null;
+    resultado.push({ consultor: c, contrato, contratos, adendas, plan, actividades, pronostico, vigencia, cobertura: analizarCobertura(adendas), linea_base: lb, entregables, semaforo_entregables: peorSemaforo(entregables), ultimo_parte: ultimoParte });
   }
 
-  const alertas = generarAlertas(resultado, datos, { corte, umbralVigencia, umbralHolgura });
-  return { corte, metodo, spiMinimo, umbralVigencia, umbralHolgura, consultores: resultado, alertas, indicadores: indicadores(resultado, alertas, corte) };
+  const alertas = generarAlertas(resultado, datos, { corte, umbralVigencia, umbralHolgura, umbralBorrador, umbralSinParte, feriados });
+  return { corte, metodo, spiMinimo, umbralVigencia, umbralHolgura, umbralEntregable, consultores: resultado, alertas, indicadores: indicadores(resultado, alertas, corte), entregables: resumenEntregables(resultado, corte, umbralBorrador) };
 }
 
 function coberturaLineaBase(entregable, datos) {
@@ -53,7 +71,8 @@ function coberturaLineaBase(entregable, datos) {
 
 const ff = (s) => (s ? s.split('-').reverse().join('/') : '—');
 
-function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) {
+function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura, umbralBorrador = 5, umbralSinParte = 3, feriados = [] }) {
+  const habiles = crearCalendario({ tipo: 'HABILES', feriados });
   const hoy = aDia(corte);
   const alertas = [];
   const add = (prioridad, codigo, it, titulo, detalle, accion) =>
@@ -64,8 +83,9 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
     const pr = it.pronostico;
     const proy = (datos.proyectos || []).find((x) => x.proyecto_id === it.consultor.proyecto_id);
     const porOS = !!(proy && proy.con_orden_servicio === 1); // el vencimiento que se controla es el de la Orden de Servicio
-    // Vigencia
-    if (v.dias_restantes !== null && v.dias_restantes < 0) {
+    // Vigencia (no aplica si el servicio ya terminó: OS culminada con todas sus conformidades o resuelta)
+    const terminado = !!(it.contrato && ['CULMINADA', 'RESUELTA'].includes(it.contrato.estado_contratacion));
+    if (terminado) { /* sin alertas de vencimiento */ } else if (v.dias_restantes !== null && v.dias_restantes < 0) {
       add('ALTA', 'VIGENCIA_VENCIDA', it, porOS ? 'Orden de Servicio vencida' : 'Vigencia contractual vencida',
         `La vigencia terminó el ${ff(v.fin_vigencia)} (hace ${-v.dias_restantes} días).`,
         v.adenda_siguiente ? `Gestionar la suscripción de la Adenda N.° ${v.adenda_siguiente.numero} (${v.adenda_siguiente.estado.toLowerCase()}).` : 'Confirmar si el servicio continúa; no otorgar conformidades por periodos sin contrato vigente.');
@@ -78,9 +98,45 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
     if (porOS) {
       for (const al of alertas) {
         if (al.consultor_id === it.consultor.consultor_id && (al.codigo === 'VIGENCIA_VENCIDA' || al.codigo === 'VIGENCIA_POR_VENCER')) {
-          al.accion = 'Renovar la Orden de Servicio (Administrar proyectos → Renovar) o definir el cierre del servicio; no otorgar conformidades sin vigencia.';
+          al.accion = 'Registrar una nueva Orden de Servicio o una ampliación de plazo (lista de profesionales del proyecto), o definir el cierre del servicio; no otorgar conformidades sin vigencia.';
         }
       }
+    }
+    // Orden de Servicio registrada y aún sin notificar (no corre el plazo ni hay seguimiento)
+    const k = it.contrato;
+    if (k && k.estado_contratacion === 'REGISTRADA' && k.fecha_registro) {
+      const dias = hoy - aDia(k.fecha_registro);
+      if (dias >= umbralBorrador) {
+        add('MEDIA', 'OS_SIN_NOTIFICAR', it, `Orden de Servicio N.° ${k.numero} registrada hace ${dias} días sin notificación`,
+          `Registrada el ${ff(k.fecha_registro)}. El plazo empieza al día siguiente de la notificación.`,
+          'Registrar la notificación (fecha, medio y cargo en PDF) para iniciar el plazo y el seguimiento.');
+      }
+    }
+    // Supervisión diaria (Etapa 3): en la modalidad Orden de Servicio, un profesional en ejecución sin parte reciente
+    const modalidadOS = proy && (proy.modalidad === 'ORDEN_SERVICIO' || (!proy.modalidad && proy.con_orden_servicio === 1));
+    const enEjecucion = it.contratos.find((x) => x.estado_contratacion === 'EN_EJECUCION' && x.fecha_inicio && x.fecha_inicio <= corte);
+    if (modalidadOS && proy.estado === 'EN_EJECUCION' && enEjecucion) {
+      const desde = it.ultimo_parte && it.ultimo_parte >= enEjecucion.fecha_inicio ? it.ultimo_parte : null;
+      const ref = desde ? aDia(desde) + 1 : aDia(enEjecucion.fecha_inicio);
+      const dias = ref <= hoy ? habiles.duracion(ref, hoy) : 0;
+      if (dias > umbralSinParte) {
+        add('MEDIA', 'SIN_PARTE_DIARIO', it, desde ? `Sin parte diario desde el ${ff(desde)} (${dias} días hábiles)` : `Sin partes diarios desde el inicio del servicio (${dias} días hábiles)`,
+          `Inicio del servicio: ${ff(enEjecucion.fecha_inicio)}.${desde ? ` Último parte: ${ff(desde)}.` : ''}`, 'Registrar el parte diario de la supervisión con el avance y sus evidencias.');
+      }
+    }
+    // Entregables del TDR
+    for (const e of it.entregables) {
+      if (e.revision_vencida) {
+        add('ALTA', 'CONFORMIDAD_FUERA_DE_PLAZO', it, `Entregable ${e.numero} (${String(e.nombre).slice(0, 60)}): ${e.motivo.toLowerCase()}`,
+          `${e.estado === 'SUBSANADO' ? 'Subsanado' : 'Presentado'} el ${ff(e.fecha_subsanacion || e.fecha_presentacion)}.`, 'Dar la conformidad u observar el entregable (equipo del proyecto); avisar al responsable y a la Dirección OTI.');
+        continue;
+      }
+      if (e.semaforo !== 'ROJO' && e.semaforo !== 'AMBAR') continue;
+      const nombre = `Entregable ${e.numero} (${String(e.nombre).slice(0, 60)})`;
+      if (e.vencido) add('ALTA', 'ENTREGABLE_VENCIDO', it, `${nombre} vencido hace ${e.dias_atraso} día(s) sin presentar`, `Fecha límite: ${ff(e.fecha_limite)}.`, 'Requerir la presentación al profesional; los días de atraso pueden dar lugar a penalidad según el TDR (confirmar con Abastecimiento).');
+      else if (e.estado === 'OBSERVADO' && e.semaforo === 'ROJO') add('ALTA', 'SUBSANACION_VENCIDA', it, `${nombre}: plazo de subsanación vencido`, `Debía subsanarse hasta el ${ff(e.fecha_limite_subsanacion)}.`, 'Requerir la subsanación o definir las acciones que correspondan según el TDR.');
+      else if (e.semaforo === 'ROJO') add('ALTA', 'ENTREGABLE_EN_RIESGO', it, `${nombre} en riesgo: ${e.motivo.toLowerCase()}`, `Fecha límite: ${ff(e.fecha_limite)}.`, 'Revisar con el profesional las actividades que aportan al entregable y reprogramarlas con motivo.');
+      else if (e.estado === 'PENDIENTE') add('MEDIA', 'ENTREGABLE_POR_VENCER', it, `${nombre}: ${e.motivo.toLowerCase()}`, `Fecha límite: ${ff(e.fecha_limite)}.`, 'Confirmar con el profesional la presentación en la fecha límite.');
     }
     // Cobertura histórica entre adendas confirmadas (concluidas y firmadas)
     for (const t of it.cobertura.brechas) {
@@ -143,6 +199,25 @@ function generarAlertas(items, datos, { corte, umbralVigencia, umbralHolgura }) 
   }
   const peso = { ALTA: 0, MEDIA: 1, BAJA: 2 };
   return alertas.sort((a, b) => peso[a.prioridad] - peso[b.prioridad] || a.clave.localeCompare(b.clave));
+}
+
+/** Cifras de entregables y Órdenes de Servicio (aparte de `indicadores`, que no cambia para GF2026). */
+function resumenEntregables(items, corte, umbralBorrador) {
+  const todos = items.flatMap((it) => it.entregables);
+  const hoy = aDia(corte);
+  return {
+    total: todos.length,
+    pendientes: todos.filter((e) => !['CONFORME', 'ANULADO'].includes(e.estado)).length,
+    vencidos: todos.filter((e) => e.vencido).length,
+    por_vencer: todos.filter((e) => e.estado === 'PENDIENTE' && !e.vencido && e.semaforo === 'AMBAR').length,
+    conformes: todos.filter((e) => e.estado === 'CONFORME').length,
+    os_registradas: items.filter((it) => it.contrato && it.contrato.estado_contratacion === 'REGISTRADA').length,
+    os_sin_notificar: items.filter((it) => it.contrato && it.contrato.estado_contratacion === 'REGISTRADA' && it.contrato.fecha_registro && hoy - aDia(it.contrato.fecha_registro) >= umbralBorrador).length,
+    en_revision: todos.filter((e) => ['PRESENTADO', 'EN_REVISION', 'SUBSANADO'].includes(e.estado)).length,
+    revision_vencida: todos.filter((e) => e.revision_vencida).length,
+    os_culminadas: items.filter((it) => it.contrato && it.contrato.estado_contratacion === 'CULMINADA').length,
+    os_en_ejecucion: items.filter((it) => it.contrato && it.contrato.estado_contratacion === 'EN_EJECUCION' && it.contrato.tipo_documento === 'ORDEN_SERVICIO').length,
+  };
 }
 
 /**

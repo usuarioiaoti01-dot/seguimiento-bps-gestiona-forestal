@@ -1,4 +1,5 @@
-import { api, estado, esc, titulo, badge, modal } from '../util.js';
+import { api, estado, esc, titulo, badge, modal, puedeProyecto } from '../util.js';
+import { registrarOrdenServicio } from './orden-servicio.js';
 import { renderVigenciaTimeline } from '../vigencia-timeline/vigencia-timeline.js';
 import { adaptarVigencias } from '../vigencia-adaptador.js';
 import { cargarProyectos } from './proyectos.js';
@@ -13,7 +14,11 @@ export async function vistaTablero(el) {
   const q = estado.corte ? `?corte=${estado.corte}` : '';
   const e = await api('GET', `/estado${q}`);
   if (!estado.corte) { const c = document.getElementById('corte'); if (c && !c.value) c.value = e.corte; }
-  titulo(TITULO, '');
+  // Título del proyecto elegido (GF2026 conserva el suyo)
+  const proyectos = estado.proyectos && estado.proyectos.length ? estado.proyectos : await cargarProyectos();
+  const proyAct = (proyectos || []).find((x) => x.proyecto_id === estado.proyecto_id);
+  if (proyAct && proyAct.codigo !== 'GF2026') titulo(`${proyAct.codigo} · ${proyAct.con_adendas ? 'ADENDAS - PLAZOS' : 'PLAZOS - VENCIMIENTOS'}`, proyAct.nombre);
+  else titulo(TITULO, '');
   const k = e.indicadores;
 
   el.innerHTML = `
@@ -40,7 +45,7 @@ export async function vistaTablero(el) {
     data: vigencias,
     corte: String(e.corte).slice(0, 10),
     umbralAtencion: 0,
-    titulo: 'GESTIÓN DE LAS ADENDAS Y CONTRATOS 2026',
+    titulo: proyAct && !proyAct.con_adendas ? 'VIGENCIA DE LAS ÓRDENES DE SERVICIO' : 'GESTIÓN DE LAS ADENDAS Y CONTRATOS 2026',
     etiquetaFila: 'profesionales',
     mostrarBrecha: false, // sin la columna BRECHA (insignias)
     mostrarTerminoProbable: false, // el término probable es una estimación: el gráfico muestra solo datos confirmados
@@ -99,7 +104,9 @@ export async function vistaTablero(el) {
     const lista = estado.proyectos && estado.proyectos.length ? estado.proyectos : await cargarProyectos();
     const proy = lista.find((x) => x.proyecto_id === estado.proyecto_id);
     if (proy && proy.con_profesionales) {
-      el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="prof-proy"><div class="cab"><h2>Profesionales del proyecto ${esc(proy.codigo)}${proy.con_orden_servicio ? ' · vencimiento de la Orden de Servicio' : ''}</h2></div><div class="cuerpo sin tabla-env" id="prof-proy-cuerpo"><div class="vacio">Cargando…</div></div></div>`);
+      el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="prof-proy"><div class="cab"><h2>Profesionales del proyecto ${esc(proy.codigo)}${proy.con_orden_servicio ? ' · vencimiento de la Orden de Servicio' : ''}</h2>${proy.modalidad === 'ORDEN_SERVICIO' && puedeProyecto(proy.proyecto_id) ? '<div class="acciones"><button type="button" class="btn peq prim" id="b-nueva-os">Registrar Orden de Servicio</button></div>' : ''}</div><div class="cuerpo sin tabla-env" id="prof-proy-cuerpo"><div class="vacio">Cargando…</div></div></div>`);
+      const bOS = el.querySelector('#b-nueva-os');
+      if (bOS) bOS.onclick = async () => { if (await registrarOrdenServicio(proy)) window.sgfRefrescar(); };
       await montarProfesionales(el.querySelector('#prof-proy-cuerpo'), proy);
     }
   }

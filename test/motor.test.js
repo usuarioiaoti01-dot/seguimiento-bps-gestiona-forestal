@@ -233,3 +233,140 @@ test('indicadores: días de atraso, actividades sin inicio y planes aprobados', 
   c4.planes[0].estado = 'APROBADO'; c4.planes[1].estado = 'APROBADO';
   assert.equal(construirEstado(c4, { corte }).indicadores.planes_aprobados, 2);
 });
+
+// ------------------------------------------------------------------ Orden de Servicio: plazos y entregables (Etapa 2)
+const { calcularPlazosContratacion, validarEntregables } = require('../server/motor/plazos');
+const { evaluarEntregable, peorSemaforo } = require('../server/motor/entregables');
+
+test('R-OS1/R-OS2/R-OS3: el plazo corre desde el día siguiente de la notificación, en días calendario', () => {
+  const r = calcularPlazosContratacion({ fecha_notificacion: '2026-11-24', plazo_dias: 60, entregables: [{ nombre: 'Plan de trabajo', plazo_dias: 30 }, { nombre: 'Informe final', plazo_dias: 60 }] });
+  assert.equal(r.inicio, '2026-11-25');
+  assert.equal(r.fin, '2027-01-23');
+  assert.deepEqual(r.entregables.map((e) => e.fecha_limite), ['2026-12-24', '2027-01-23']);
+  assert.deepEqual(r.advertencias, []);
+  // notificada un viernes víspera de feriado: el inicio es igual el sábado (días calendario, D5)
+  const v = calcularPlazosContratacion({ fecha_notificacion: '2026-12-04', plazo_dias: 10, entregables: [{ nombre: 'Único', plazo_dias: 10 }] });
+  assert.equal(v.inicio, '2026-12-05');
+  assert.equal(v.fin, '2026-12-14');
+  // fin de mes, cambio de año y año bisiesto
+  assert.equal(calcularPlazosContratacion({ fecha_notificacion: '2027-12-31', plazo_dias: 1, entregables: [{ nombre: 'Único', plazo_dias: 1 }] }).fin, '2028-01-01');
+  assert.equal(calcularPlazosContratacion({ fecha_notificacion: '2028-02-28', plazo_dias: 1, entregables: [{ nombre: 'Único', plazo_dias: 1 }] }).fin, '2028-02-29');
+  assert.equal(calcularPlazosContratacion({ fecha_notificacion: '2027-01-31', plazo_dias: 30, entregables: [{ nombre: 'Único', plazo_dias: 30 }] }).fin, '2027-03-02');
+});
+
+test('entregables: errores que bloquean y advertencias que no', () => {
+  const v = (plazo, ents) => validarEntregables({ plazo_dias: plazo, entregables: ents });
+  assert.match(v(0, [{ nombre: 'Informe', plazo_dias: 1 }]).errores.join(), /entre 1 y/);
+  assert.match(v(30, []).errores.join(), /al menos un entregable/);
+  assert.match(v(30, [{ nombre: 'Informe', plazo_dias: 40 }]).errores.join(), /supera el plazo/);
+  assert.match(v(60, [{ nombre: 'Uno', plazo_dias: 30 }, { nombre: 'Dos', plazo_dias: 30 }]).errores.join(), /mayor que el del entregable anterior/);
+  assert.match(v(60, [{ nombre: 'Uno', plazo_dias: 30, porcentaje_pago: 70 }, { nombre: 'Dos', plazo_dias: 60, porcentaje_pago: 40 }]).errores.join(), /más de 100/);
+  assert.match(v(60, [{ nombre: 'X', plazo_dias: 60 }]).errores.join(), /nombre/);
+  const ok = v(60, [{ nombre: 'Uno', plazo_dias: 30, porcentaje_pago: 40 }, { nombre: 'Dos', plazo_dias: 50, porcentaje_pago: 40 }]);
+  assert.deepEqual(ok.errores, []);
+  assert.equal(ok.advertencias.length, 2, 'el último no vence al final y los porcentajes no suman 100');
+  assert.throws(() => calcularPlazosContratacion({ fecha_notificacion: '24/11/2026', plazo_dias: 30, entregables: [{ nombre: 'Uno', plazo_dias: 30 }] }), /AAAA-MM-DD/);
+});
+
+test('R-OS5: semáforo del entregable', () => {
+  const e = (extra) => ({ entregable_servicio_id: 1, numero: 1, nombre: 'Informe', estado: 'PENDIENTE', fecha_limite: '2026-12-24', ...extra });
+  const corte = '2026-12-01';
+  assert.equal(evaluarEntregable(e({ fecha_limite: null }), { corte }).semaforo, 'GRIS', 'sin notificación no hay fecha');
+  assert.equal(evaluarEntregable(e(), { corte, umbral: 7 }).semaforo, 'VERDE');
+  const amb = evaluarEntregable(e(), { corte: '2026-12-20', umbral: 7 });
+  assert.equal(amb.semaforo, 'AMBAR'); assert.equal(amb.dias_para_vencer, 4);
+  const venc = evaluarEntregable(e(), { corte: '2026-12-27' });
+  assert.equal(venc.semaforo, 'ROJO'); assert.equal(venc.vencido, true); assert.equal(venc.dias_atraso, 3);
+  const riesgo = evaluarEntregable(e(), { corte, finProbable: '2026-12-30' });
+  assert.equal(riesgo.semaforo, 'ROJO'); assert.equal(riesgo.holgura_dias, -6);
+  assert.equal(evaluarEntregable(e(), { corte, umbral: 7, finProbable: '2026-12-20' }).semaforo, 'AMBAR', 'holgura menor que el umbral');
+  assert.equal(evaluarEntregable(e({ estado: 'PRESENTADO', fecha_presentacion: '2026-12-26' }), { corte: '2026-12-27' }).semaforo, 'AZUL');
+  assert.equal(evaluarEntregable(e({ estado: 'PRESENTADO', fecha_presentacion: '2026-12-26' }), { corte: '2026-12-27' }).dias_atraso, 2, 'presentado con 2 días de atraso');
+  assert.equal(evaluarEntregable(e({ estado: 'OBSERVADO', fecha_limite_subsanacion: '2026-12-05' }), { corte: '2026-12-06' }).semaforo, 'ROJO');
+  assert.equal(evaluarEntregable(e({ estado: 'CONFORME' }), { corte: '2027-02-01' }).semaforo, 'GRIS');
+  assert.equal(peorSemaforo([{ semaforo: 'VERDE' }, { semaforo: 'AMBAR' }, { semaforo: 'GRIS' }]), 'AMBAR');
+  assert.equal(peorSemaforo([]), 'GRIS');
+});
+
+// ------------------------------------------------------------------ alertas de la Orden de Servicio y tablero general (Etapas 2–5)
+const { construirPortafolio } = require('../server/motor/portafolio');
+
+/** Proyecto de modalidad OS con un profesional, una OS notificada el 01/11/2026 (60 días) y sus entregables. */
+function datosOS({ contrato = {}, entregables = [], ultimo_parte = null, consultor = {} } = {}) {
+  const k = { contrato_id: 1, consultor_id: 1, numero: 'OS-001', tipo_documento: 'ORDEN_SERVICIO', estado_contratacion: 'EN_EJECUCION', fecha_registro: '2026-10-25', fecha_notificacion: '2026-11-01', fecha_inicio: '2026-11-02', fecha_fin: '2026-12-31', plazo_dias: 60, monto: 20000, activo: 1, ...contrato };
+  return {
+    proyectos: [{ proyecto_id: 1, codigo: 'PRY-2026-001', nombre: 'Proyecto OS', modalidad: 'ORDEN_SERVICIO', con_orden_servicio: 1, con_profesionales: 1, con_adendas: 0, estado: 'EN_EJECUCION', activo: 1 }],
+    consultores: [{ consultor_id: 1, proyecto_id: 1, clave: 'ABC', nombres: 'Ana Belén Cruz', estado: 'ACTIVO', activo: 1, ...consultor }],
+    contratos: [k],
+    adendas: k.fecha_inicio ? [{ adenda_id: 1, contrato_id: 1, numero: 1, tipo_periodo: 'ORIGINAL', estado: 'FIRMADA', fecha_inicio: k.fecha_inicio, fecha_fin: '2026-12-31', plazo_dias: 60, activo: 1 }] : [],
+    entregables_servicio: entregables.map((e, i) => ({ entregable_servicio_id: i + 1, contrato_id: 1, numero: i + 1, nombre: `Entregable ${i + 1}`, plazo_dias: 30 * (i + 1), estado: 'PENDIENTE', activo: 1, ...e })),
+    ultimos_partes: ultimo_parte ? [{ consultor_id: 1, ultimo: ultimo_parte }] : [],
+    planes: [], actividades: [], dependencias: [], linea_base: [], controles_cambio: [], feriados: [], parametros: [],
+  };
+}
+const codigos = (e) => e.alertas.map((a) => a.codigo);
+
+test('alertas de entregables: vencido, subsanación vencida, conformidad fuera de plazo y por vencer', () => {
+  const d = datosOS({ ultimo_parte: '2026-12-10', entregables: [
+    { fecha_limite: '2026-12-01' }, // vencido sin presentar
+    { estado: 'OBSERVADO', fecha_limite: '2026-12-15', fecha_observacion: '2026-12-01', fecha_limite_subsanacion: '2026-12-06' }, // subsanación vencida
+    { estado: 'PRESENTADO', fecha_limite: '2026-12-20', fecha_presentacion: '2026-12-01' }, // 9 días sin conformidad (plazo 7)
+    { fecha_limite: '2026-12-15' }, // vence en 5 días
+  ] });
+  const e = construirEstado(d, { corte: '2026-12-10' });
+  const c = codigos(e);
+  for (const x of ['ENTREGABLE_VENCIDO', 'SUBSANACION_VENCIDA', 'CONFORMIDAD_FUERA_DE_PLAZO', 'ENTREGABLE_POR_VENCER']) assert.ok(c.includes(x), `falta ${x}`);
+  assert.equal(e.alertas.find((a) => a.codigo === 'SUBSANACION_VENCIDA').prioridad, 'ALTA');
+  assert.equal(e.alertas.find((a) => a.codigo === 'ENTREGABLE_POR_VENCER').prioridad, 'MEDIA');
+  assert.equal(e.entregables.revision_vencida, 1);
+});
+
+test('alerta ENTREGABLE_EN_RIESGO: las actividades del plan terminarían después de la fecha límite', () => {
+  const d = datosOS({ ultimo_parte: '2026-11-20', entregables: [{ fecha_limite: '2026-12-01' }] });
+  d.planes = [{ plan_id: 1, consultor_id: 1, estado: 'APROBADO', tipo_dias: 'CALENDARIO', activo: 1 }];
+  d.actividades = [act(1, '2026-11-02', '2026-12-10', { entregable_servicio_id: 1 })];
+  const e = construirEstado(d, { corte: '2026-11-20' });
+  const a = e.alertas.find((x) => x.codigo === 'ENTREGABLE_EN_RIESGO');
+  assert.ok(a, 'el entregable vence el 01/12 y su actividad termina el 10/12');
+  assert.equal(a.prioridad, 'ALTA');
+});
+
+test('alertas OS_SIN_NOTIFICAR y SIN_PARTE_DIARIO', () => {
+  const borrador = datosOS({ contrato: { estado_contratacion: 'REGISTRADA', fecha_registro: '2026-11-01', fecha_notificacion: null, fecha_inicio: null, fecha_fin: null } });
+  assert.ok(codigos(construirEstado(borrador, { corte: '2026-11-06' })).includes('OS_SIN_NOTIFICAR'), '5 días sin notificar (umbral 5)');
+  assert.ok(!codigos(construirEstado(borrador, { corte: '2026-11-05' })).includes('OS_SIN_NOTIFICAR'));
+  // inicio lun 02/11; sin partes: al jue 05/11 van 4 días hábiles (> 3)
+  assert.ok(codigos(construirEstado(datosOS(), { corte: '2026-11-05' })).includes('SIN_PARTE_DIARIO'));
+  assert.ok(!codigos(construirEstado(datosOS(), { corte: '2026-11-04' })).includes('SIN_PARTE_DIARIO'));
+  assert.ok(!codigos(construirEstado(datosOS({ ultimo_parte: '2026-11-04' }), { corte: '2026-11-05' })).includes('SIN_PARTE_DIARIO'));
+});
+
+test('una OS culminada o resuelta no genera alertas de vencimiento de la vigencia', () => {
+  const corte = '2026-12-25'; // la vigencia termina el 31/12: vence en 6 días
+  assert.ok(codigos(construirEstado(datosOS({ ultimo_parte: corte }), { corte })).includes('VIGENCIA_POR_VENCER'));
+  for (const estado of ['CULMINADA', 'RESUELTA']) {
+    const d = datosOS({ contrato: { estado_contratacion: estado, fecha_culminacion: '2026-12-20' }, consultor: { estado: 'CULMINADO' } });
+    for (const c of ['2026-12-25', '2027-01-15']) {
+      const cs = codigos(construirEstado(d, { corte: c }));
+      assert.ok(!cs.includes('VIGENCIA_POR_VENCER') && !cs.includes('VIGENCIA_VENCIDA'), `${estado} al ${c}`);
+    }
+  }
+});
+
+test('tablero general: avance por % de pago, semáforo, próximo entregable y monto', () => {
+  const d = datosOS({ ultimo_parte: '2026-12-01', entregables: [
+    { estado: 'CONFORME', fecha_limite: '2026-12-01', porcentaje_pago: 40 },
+    { fecha_limite: '2026-12-31', porcentaje_pago: 60 },
+  ] });
+  const e = construirEstado(d, { corte: '2026-12-02' });
+  const r = construirPortafolio(d, e, { equipos: { 1: [{ nombre: 'Jefe Uno', es_responsable: 1 }] } });
+  const p = r.proyectos[0];
+  assert.equal(p.avance, 40, 'el entregable conforme pesa su 40 %');
+  assert.equal(p.responsable, 'Jefe Uno');
+  assert.equal(p.proximo_entregable.numero, 2);
+  assert.equal(p.monto_comprometido, 20000);
+  assert.equal(p.monto_conforme, 8000);
+  assert.equal(p.semaforo, 'VERDE');
+  assert.equal(r.resumen.en_curso, 1);
+  assert.equal(r.resumen.os_en_ejecucion, 1);
+});

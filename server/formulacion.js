@@ -110,6 +110,7 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null, almac
         tiene_pdf: !!(planesPdf && planesPdf.info(plan.plan_id).existe), documento_origen: plan.documento_origen || null,
       },
       actividades, permisos: permisos(plan, ctx, consultor_id), historial,
+      entregables: entregablesDe({ d, consultor }).map((e) => ({ entregable_servicio_id: e.entregable_servicio_id, numero: e.numero, nombre: e.nombre, plazo_dias: e.plazo_dias, fecha_limite: e.fecha_limite || null })),
     };
   }
 
@@ -152,12 +153,20 @@ function crearFormulacion({ servicio, repo, docs = null, planesPdf = null, almac
     const subs = crudas.map((s) => ({ t: String(s.t ?? s.texto ?? '').trim(), d: Number(s.d ?? s.dias), p: String(s.p ?? s.producto ?? '').trim() })).filter((s) => s.t || s.p || (Number.isFinite(s.d) && s.d > 0));
     return {
       subs,
-      f: { descripcion: String(e.descripcion ?? '').trim(), producto: subs.length ? subs.map((s) => s.p).filter(Boolean).join('; ') : String(e.producto ?? '').trim(), dias_plan: Number(e.dias_plan), subactividades: subs.length ? JSON.stringify(subs) : null },
+      f: { descripcion: String(e.descripcion ?? '').trim(), producto: subs.length ? subs.map((s) => s.p).filter(Boolean).join('; ') : String(e.producto ?? '').trim(), dias_plan: Number(e.dias_plan), subactividades: subs.length ? JSON.stringify(subs) : null,
+        entregable_servicio_id: e.entregable_servicio_id === '' || e.entregable_servicio_id === undefined || e.entregable_servicio_id === null ? null : Number(e.entregable_servicio_id) },
     };
   }
 
+  /** Entregables del TDR de la Orden de Servicio vigente del profesional (a los que puede aportar una actividad). */
+  const entregablesDe = (c) => {
+    const ks = c.d.contratos.filter((k) => k.consultor_id === c.consultor.consultor_id && vivo(k) && ['REGISTRADA', 'EN_EJECUCION'].includes(k.estado_contratacion)).map((k) => k.contrato_id);
+    return (c.d.entregables_servicio || []).filter((e) => ks.includes(e.contrato_id) && vivo(e) && e.estado !== 'ANULADO').sort((a, b) => a.contrato_id - b.contrato_id || a.numero - b.numero);
+  };
+
   function validarActividad(f, subs, c, otrasDias) {
     if (!f.descripcion) throw error(400, 'Indique la actividad');
+    if (f.entregable_servicio_id !== null && f.entregable_servicio_id !== undefined && !entregablesDe(c).some((e) => e.entregable_servicio_id === f.entregable_servicio_id)) throw error(400, 'El entregable elegido no pertenece a la Orden de Servicio vigente del profesional');
     if (!subs.length && !f.producto) throw error(400, 'Indique el producto / evidencia verificable');
     if (f.descripcion.length > MAX.descripcion) throw error(400, `La actividad admite hasta ${MAX.descripcion} caracteres`);
     if (!subs.length && f.producto.length > MAX.producto) throw error(400, `El producto admite hasta ${MAX.producto} caracteres`);

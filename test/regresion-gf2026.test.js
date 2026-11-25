@@ -15,6 +15,11 @@ const semilla = require('../data/semilla.json');
 
 const ARCHIVO = path.join(__dirname, 'fixtures', 'gf2026-estado.json');
 const CORTES = ['2026-08-17', '2026-11-24', '2027-01-15'];
+// Columnas que se agregaron a las tablas después de guardar la instantánea: son datos nuevos, no cálculo, y se ignoran.
+// (Nunca agregue aquí un campo calculado: si el cálculo cambia, la prueba debe fallar.)
+const COLUMNAS_POSTERIORES = new Set(['tipo_periodo']); // db/17
+const sinPosteriores = (v) => (Array.isArray(v) ? v.map(sinPosteriores)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([k]) => !COLUMNAS_POSTERIORES.has(k)).map(([k, x]) => [k, sinPosteriores(x)])) : v);
 
 function foto(e) {
   return {
@@ -44,5 +49,5 @@ test('GF2026: el estado calculado no cambia (instantánea previa a la Etapa 1)',
     fs.writeFileSync(ARCHIVO, `${JSON.stringify(actual, null, 1)}\n`);
   }
   const esperado = JSON.parse(fs.readFileSync(ARCHIVO, 'utf8'));
-  assert.deepEqual(JSON.parse(JSON.stringify(actual)), esperado);
+  assert.deepEqual(sinPosteriores(JSON.parse(JSON.stringify(actual))), esperado);
 });

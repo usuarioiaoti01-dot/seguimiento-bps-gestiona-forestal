@@ -77,7 +77,8 @@ async function crearRepositorioSqlServer(config) {
     return nueva;
   }
 
-  async function actualizarEn(tx, entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR' } = {}) {
+  // `tocar`: sube la revisión aunque no cambie ninguna columna (raíz de un agregado, p. ej. la OS al corregir sus entregables)
+  async function actualizarEn(tx, entidad, id, cambios, { revision, usuario, motivo, origen = 'UI', consultor_id = null, accion = 'MODIFICAR', tocar = false } = {}) {
     const meta = ENTIDADES[entidad];
     const cols = Object.keys(cambios).filter((c) => meta.columnas.includes(c));
     const previo = await consulta(`SELECT * FROM ${meta.tabla} WITH (UPDLOCK, ROWLOCK) WHERE ${meta.pk} = @id;`, { id: Number(id) }, tx);
@@ -89,7 +90,7 @@ async function crearRepositorioSqlServer(config) {
     const antes = {};
     const despues = {};
     for (const c of cols) if (String(fila[c] ?? '') !== String(cambios[c] ?? '')) { antes[c] = fila[c] ?? null; despues[c] = cambios[c]; }
-    if (!Object.keys(despues).length) return { fila, sinCambios: true };
+    if (!Object.keys(despues).length && !(tocar && !meta.sinRevision)) return { fila, sinCambios: true };
     const params = Object.fromEntries(Object.keys(despues).map((c) => [c, despues[c]]));
     params.__id = Number(id);
     params.__usuario = usuario;
@@ -116,11 +117,15 @@ async function crearRepositorioSqlServer(config) {
         SELECT CONVERT(CHAR(10), fecha, 23) AS fecha, descripcion, tipo FROM sgf.feriado ORDER BY fecha;
         SELECT codigo, valor, descripcion FROM sgf.parametro;
         SELECT * FROM sgf.proyecto WHERE activo = 1 ORDER BY proyecto_id;
-        SELECT * FROM sgf.proyecto_miembro WHERE activo = 1 ORDER BY proyecto_id, miembro_id;`);
-      const [consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros, proyectos, miembros] = r.recordsets.map((rs) => normalizarTodas(rs));
+        SELECT * FROM sgf.proyecto_miembro WHERE activo = 1 ORDER BY proyecto_id, miembro_id;
+        SELECT * FROM sgf.entregable_servicio WHERE activo = 1 ORDER BY contrato_id, numero;
+        SELECT consultor_id, CONVERT(CHAR(10), MAX(fecha), 23) AS ultimo FROM sgf.parte_diario WHERE activo = 1 GROUP BY consultor_id;`);
+      const [consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros, proyectos, miembros, entregables_servicio, ultimos_partes] = r.recordsets.map((rs) => normalizarTodas(rs));
+      for (const k of contratos) if (k.monto !== null && k.monto !== undefined) k.monto = Number(k.monto);
+      for (const e of entregables_servicio) if (e.porcentaje_pago !== null && e.porcentaje_pago !== undefined) e.porcentaje_pago = Number(e.porcentaje_pago);
       for (const a of actividades) a.avance = Number(a.avance);
       for (const e of linea_base) e.avance_corte = Number(e.avance_corte);
-      return { proyectos, miembros, consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros };
+      return { proyectos, miembros, entregables_servicio, ultimos_partes, consultores, contratos, adendas, planes, actividades, dependencias, linea_base, controles_cambio, feriados, parametros };
     },
 
     /** Escrituras de entidad: cada una en su propia transacción, o en la de `opts.tx` (ver `transaccion`). */
@@ -155,6 +160,22 @@ async function crearRepositorioSqlServer(config) {
          ORDER BY documento_id;`,
         { entidad: entidad || null, entidad_id: entidad_id ? Number(entidad_id) : null, tipo: tipo || null, proyecto_id: proyecto_id ? Number(proyecto_id) : null, todos: incluirRetirados ? 1 : 0 });
       return normalizarTodas(r.recordset, SIN_FECHAS).map((f) => ({ ...f, bytes: Number(f.bytes) }));
+    },
+
+    /** Partes diarios (db/18) con sus ítems; los más recientes primero. */
+    async listarPartes({ proyecto_id, consultor_id, desde, hasta, limite = 200 } = {}) {
+      const p = { proyecto_id: proyecto_id ? Number(proyecto_id) : null, consultor_id: consultor_id ? Number(consultor_id) : null, desde: desde || null, hasta: hasta || null, limite: Math.min(Number(limite) || 200, 1000) };
+      const r = await consulta(
+        `SELECT TOP (@limite) * FROM sgf.parte_diario
+         WHERE activo = 1 AND (@proyecto_id IS NULL OR proyecto_id = @proyecto_id) AND (@consultor_id IS NULL OR consultor_id = @consultor_id)
+           AND (@desde IS NULL OR fecha >= @desde) AND (@hasta IS NULL OR fecha <= @hasta)
+         ORDER BY fecha DESC, parte_id DESC;`, p);
+      const partes = normalizarTodas(r.recordset);
+      if (!partes.length) return [];
+      const items = normalizarTodas((await consulta(
+        `SELECT * FROM sgf.parte_diario_item WHERE activo = 1 AND parte_id IN (SELECT value FROM OPENJSON(@ids)) ORDER BY item_id;`, { ids: JSON.stringify(partes.map((x) => x.parte_id)) })).recordset);
+      for (const i of items) { i.avance_reportado = Number(i.avance_reportado); if (i.avance_anterior !== null) i.avance_anterior = Number(i.avance_anterior); }
+      return partes.map((x) => ({ ...x, items: items.filter((i) => i.parte_id === x.parte_id) }));
     },
 
     /** Proyectos en los que el usuario es miembro activo del equipo (se lee en cada petición: db/15). */

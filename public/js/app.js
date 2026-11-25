@@ -10,12 +10,15 @@ import { vistaBitacora } from './vistas/bitacora.js';
 import { vistaConfiguracion } from './vistas/configuracion.js';
 import { vistaProyectos, cargarProyectos, fijarProyecto, pintarSelectorProyecto } from './vistas/proyectos.js';
 import { vistaActualizarArchivo } from './vistas/actualizar-archivo.js';
+import { vistaSupervision } from './vistas/supervision.js';
+import { vistaPortafolio } from './vistas/portafolio.js';
 import { montarAsistente } from './vistas/asistente.js';
 
 const raiz = document.getElementById('app');
 
 const RUTAS = [
-  { patron: /^#?\/?$/, vista: vistaTablero, menu: 'tablero' },
+  { patron: /^#?\/?$/, vista: vistaPortafolio, menu: 'portafolio' }, // tablero general: todos los proyectos (Etapa 4)
+  { patron: /^#\/plazos$/, vista: vistaTablero, menu: 'tablero' }, // tablero del proyecto elegido (Adendas - Plazos / Plazos - Vencimientos)
   { patron: /^#\/seguimiento(?:\/(atrasadas|exceden))?$/, vista: vistaSeguimiento, menu: 'seguimiento' },
   { patron: /^#\/consultor\/(\d+)$/, vista: vistaConsultor, menu: 'seguimiento' },
   { patron: /^#\/contrato\/(\d+)$/, vista: (el, [id]) => vistaConsultor(el, [id], 'contrato'), menu: 'adendas' }, // ficha desde Contratos y adendas: sin plan de trabajo
@@ -24,6 +27,7 @@ const RUTAS = [
   { patron: /^#\/linea-base$/, vista: vistaLineaBase, menu: 'lb' },
   { patron: /^#\/proyectos$/, vista: vistaProyectos, menu: 'proyectos' },
   { patron: /^#\/actualizar-archivo$/, vista: vistaActualizarArchivo, menu: 'actualizar' },
+  { patron: /^#\/supervision$/, vista: vistaSupervision, menu: 'supervision' },
   { patron: /^#\/bitacora$/, vista: vistaBitacora, menu: 'bitacora' },
   { patron: /^#\/configuracion$/, vista: vistaConfiguracion, menu: 'config' },
 ];
@@ -69,8 +73,8 @@ async function pantallaCambioClave(obligatorio = true) {
 
 /** Opciones que se repiten dentro de cada proyecto (las mismas que tenía el menú único). */
 const OPCIONES_PROYECTO = [
-  ['#/', 'tablero', 'Adendas - Plazos', 'tablero'], ['#/adendas', 'adendas', 'Contratos y adendas', 'adendas'], ['#/formular', 'formular', 'Formular Plan de Trabajo', 'adendas'],
-  ['#/seguimiento', 'seguimiento', 'Seguimiento Actividades', 'seguimiento'], ['#/linea-base', 'lb', 'Línea base 2026', 'lb'], ['#/actualizar-archivo', 'actualizar', 'Actualizar Desde Archivo', 'seguimiento'],
+  ['#/plazos', 'tablero', 'Adendas - Plazos', 'tablero'], ['#/adendas', 'adendas', 'Contratos y adendas', 'adendas'], ['#/formular', 'formular', 'Formular Plan de Trabajo', 'adendas'],
+  ['#/seguimiento', 'seguimiento', 'Seguimiento Actividades', 'seguimiento'], ['#/supervision', 'supervision', 'Supervisión diaria', 'seguimiento'], ['#/linea-base', 'lb', 'Línea base 2026', 'lb'], ['#/actualizar-archivo', 'actualizar', 'Actualizar Desde Archivo', 'seguimiento'],
 ];
 /** Las opciones dependen de lo que el proyecto maneja (profesionales, adendas, línea base). */
 const opcionesDe = (p) => (p.con_profesionales === 0 ? [] : OPCIONES_PROYECTO
@@ -93,7 +97,7 @@ function pintarMenuProyectos() {
   cont.querySelectorAll('a[data-proy]').forEach((a) => {
     a.addEventListener('click', () => {
       if (estado.proyecto_id !== Number(a.dataset.proy)) { fijarProyecto(a.dataset.proy); pintarSelectorProyecto(); }
-      if (location.hash === a.getAttribute('href') || (a.getAttribute('href') === '#/' && (location.hash === '' || location.hash === '#/'))) enrutar(); // mismo destino: no hay cambio de hash
+      if (location.hash === a.getAttribute('href')) enrutar(); // mismo destino: no hay cambio de hash
     });
   });
   marcarMenu(rutaActual);
@@ -116,6 +120,7 @@ function estructura() {
       <nav class="menu">${esProfesional() ? `
         <a href="#/consultor/${u.consultor_id}" data-menu="seguimiento">${ICONOS.tablero}Mi información</a>
         <a href="#/formular" data-menu="formular">${ICONOS.adendas}Formular Plan de Trabajo</a>` : `
+        <a href="#/" data-menu="portafolio">${ICONOS.tablero}Tablero general</a>
         <div id="menu-proy"></div>
         <a href="#/bitacora" data-menu="bitacora">${ICONOS.bitacora}Bitácora</a>
         <a href="#/configuracion" data-menu="config">${ICONOS.config}Configuración</a>`}

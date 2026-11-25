@@ -1,7 +1,15 @@
 import { api, esc, ff, titulo, modal, aviso, fallo, estado, puede, puedeProyecto, opciones } from '../util.js';
 import { subirPdf } from './profesionales-proyecto.js';
+import { registrarOrdenServicio } from './orden-servicio.js';
 
-const ESTADOS = [['ACTIVO', 'Activo'], ['CERRADO', 'Cerrado']];
+// Estados del proyecto (db/16) y su etiqueta
+export const ESTADO_PROYECTO = { REGISTRADO: ['Registrado', 'b-azul'], EN_EJECUCION: ['En ejecución', 'b-verde'], SUSPENDIDO: ['Suspendido', 'b-ambar'], CONCLUIDO: ['Concluido', 'b-azul'], CERRADO: ['Cerrado', 'b-gris'], ANULADO: ['Anulado', 'b-gris'] };
+const ESTADOS = Object.entries(ESTADO_PROYECTO).map(([k, [t]]) => [k, t]);
+const ESTADOS_EDITABLES = (actual) => ESTADOS.filter(([k]) => k !== 'CERRADO' || actual === 'CERRADO'); // CERRADO solo con «Cerrar proyecto»
+const badgeEstado = (e) => { const [t, c] = ESTADO_PROYECTO[e] || [e, 'b-gris']; return `<span class="badge ${c}">${esc(t)}</span>`; };
+const NOMBRE_MODALIDAD = { ORDEN_SERVICIO: 'Orden de Servicio', CONTRATO_ADENDAS: 'Contrato con adendas', GESTION_INTERNA: 'Gestión interna' };
+let catalogo = null;
+const modalidades = async () => { if (!catalogo) catalogo = await api('GET', '/modalidades'); return catalogo.modalidades; };
 const fecha = (s) => (s ? ff(String(s).slice(0, 10)) : '—');
 
 /** Los proyectos vigentes (menú lateral y lista); se vuelve a leer tras registrar o cambiar uno. */
@@ -27,61 +35,55 @@ export function pintarSelectorProyecto() {
 /** Lo que el proyecto maneja: define las opciones del menú y los documentos que se solicitan. */
 export function caracteristicas(p) {
   return [
-    p.con_profesionales ? 'Con profesionales' : 'Sin profesionales',
+    `Modalidad: ${NOMBRE_MODALIDAD[p.modalidad] || p.modalidad || '—'}`, p.es_atipico ? 'Caso atípico' : null,
     p.con_adendas ? 'Adendas' : null, p.con_linea_base ? 'Línea base' : null,
-    p.con_orden_servicio ? 'Orden de Servicio' : null, p.con_tdr ? 'Términos de Referencia' : null,
+    p.con_orden_servicio ? 'TDR, OS y notificación' : null, p.con_profesionales ? null : 'Sin profesionales contratados',
   ].filter(Boolean);
 }
 
-function formProyecto(p, areas) {
-  const v = p || { estado: 'ACTIVO', con_profesionales: 1, con_adendas: 1, con_linea_base: 1, con_orden_servicio: 0, con_tdr: 0 };
-  const bloqueado = p && p.profesionales > 0 ? 'disabled' : '';
-  const caja = (n, texto, ayuda, extra = '') => `<label class="caja-car"><input type="checkbox" name="${n}" ${v[n] ? 'checked' : ''} ${extra}><span><b>${texto}</b><small>${ayuda}</small></span></label>`;
+function formProyecto(p, areas, mods) {
+  const v = p || { estado: 'REGISTRADO', modalidad: 'ORDEN_SERVICIO' };
+  const bloqueada = p && p.profesionales > 0;
+  const mod = mods.find((m) => m.codigo === v.modalidad) || mods[0];
   return `<div class="form">
     <div class="campo"><label>Código del proyecto</label><input value="${esc(v.codigo || 'Se genera al registrar')}" readonly disabled title="El código lo asigna el sistema y no se puede modificar"></div>
-    <div class="campo"><label>Estado</label><select name="estado">${opciones(ESTADOS, v.estado)}</select></div>
+    <div class="campo"><label>Estado</label><select name="estado">${opciones(ESTADOS_EDITABLES(v.estado), v.estado)}</select></div>
     <div class="campo ancho"><label>Nombre del proyecto</label><input name="nombre" value="${esc(v.nombre || '')}" maxlength="300" required></div>
+    <div class="campo ancho"><label>Modalidad</label>
+      ${bloqueada ? `<input value="${esc(mod.nombre)}" readonly disabled title="Con profesionales registrados la modalidad ya no cambia"><input type="hidden" name="modalidad" value="${esc(v.modalidad)}">`
+        : `<select name="modalidad">${opciones(mods.map((m) => [m.codigo, m.nombre]), v.modalidad)}</select>`}
+      <p class="desc-mod" id="desc-mod">${esc(mod.descripcion)}</p></div>
+    <div class="campo ancho" id="campo-atipico" ${mod.atipico ? '' : 'hidden'}><label>Motivo del caso atípico (obligatorio)</label><textarea name="motivo_atipico" maxlength="500" placeholder="Por qué este proyecto no sigue el proceso estándar de Orden de Servicio">${esc(v.motivo_atipico || '')}</textarea></div>
+    <div class="campo"><label>Unidad usuaria (quien requiere)</label><input name="unidad_usuaria" value="${esc(v.unidad_usuaria || '')}" maxlength="200" placeholder="Ej.: Dirección General de Información"></div>
     <div class="campo"><label>Financiador / cooperante</label><input name="financiador" value="${esc(v.financiador || '')}" maxlength="150" placeholder="Ej.: KfW, BID, Tesoro Público"></div>
     <div class="campo"><label>Gestión del proyecto (área designada por la Dirección OTI)</label><select name="area_tecnica"><option value="">— Seleccione —</option>${opciones([...(v.area_tecnica && !areas.includes(v.area_tecnica) ? [v.area_tecnica] : []), ...areas].map((x) => [x, x]), v.area_tecnica)}</select></div>
     <div class="campo"><label>Jefe de proyecto responsable</label><input value="${esc(p ? (p.responsable || 'Sin responsable: asígnelo en «Equipo»') : 'Se asigna en «Equipo», después de registrar')}" readonly disabled title="El equipo y su responsable se definen con el botón «Equipo» de la lista de proyectos"></div>
-    <div class="campo"><label>Inicio</label><input type="date" name="fecha_inicio" value="${esc(String(v.fecha_inicio || '').slice(0, 10))}"></div>
+    <div class="campo"><label>Inicio previsto</label><input type="date" name="fecha_inicio" value="${esc(String(v.fecha_inicio || '').slice(0, 10))}"></div>
     <div class="campo"><label>Fin previsto</label><input type="date" name="fecha_fin" value="${esc(String(v.fecha_fin || '').slice(0, 10))}"></div>
-    <div class="campo ancho"><label>Descripción</label><textarea name="descripcion" maxlength="1000">${esc(v.descripcion || '')}</textarea></div>
-    <div class="campo ancho"><b>¿Qué maneja este proyecto?</b> <span class="mut2">Según lo que elija se muestran las opciones del menú y se solicitan los documentos del personal${bloqueado ? '. Con profesionales registrados las tres primeras ya no se pueden cambiar' : ''}.</span>
-      <div class="cajas-car" id="cajas-car">
-        ${caja('con_profesionales', 'Tiene uno o más profesionales', 'Personal contratado cuyo plan de trabajo se formula y se sigue', bloqueado)}
-        ${caja('con_adendas', 'Maneja adendas', 'Ampliaciones de plazo de los contratos', bloqueado)}
-        ${caja('con_linea_base', 'Tiene línea base', 'Entregables del cronograma contra los que se mide el plan', bloqueado)}
-        ${caja('con_orden_servicio', 'El personal se contrata por Orden de Servicio', 'Se adjunta su PDF y se controla su vencimiento')}
-        ${caja('con_tdr', 'Se adjuntan Términos de Referencia', 'Se solicita el PDF de los TDR de cada profesional')}
-      </div></div></div>`;
+    <div class="campo ancho"><label>Objetivo</label><textarea name="objetivo" maxlength="1000">${esc(v.objetivo || '')}</textarea></div>
+    <div class="campo ancho"><label>Descripción</label><textarea name="descripcion" maxlength="1000">${esc(v.descripcion || '')}</textarea></div></div>`;
 }
 
-/** Sin profesionales no hay adendas, línea base ni documentos del personal. */
-function enlazarCaracteristicas(form) {
-  const c = (n) => form.elements[n];
-  const dependientes = ['con_adendas', 'con_linea_base', 'con_orden_servicio', 'con_tdr'];
-  const bloqueadas = new Set(dependientes.filter((n) => c(n).disabled));
-  const ajustar = () => {
-    const con = c('con_profesionales').checked;
-    for (const n of dependientes) {
-      const el = c(n);
-      if (!con) { el.checked = false; el.disabled = true; } else el.disabled = bloqueadas.has(n);
-    }
-  };
-  c('con_profesionales').addEventListener('change', ajustar);
-  ajustar();
+/** Al cambiar la modalidad se actualiza su descripción y se pide el motivo si es el caso atípico. */
+function enlazarModalidad(form, mods) {
+  const sel = form.elements.modalidad;
+  if (!sel || sel.tagName !== 'SELECT') return;
+  sel.addEventListener('change', () => {
+    const m = mods.find((x) => x.codigo === sel.value);
+    form.querySelector('#desc-mod').textContent = m ? m.descripcion : '';
+    form.querySelector('#campo-atipico').hidden = !(m && m.atipico);
+  });
 }
 
 async function registrarProyecto(p) {
-  let areas = [];
-  try { areas = await api('GET', '/proyectos/areas'); } catch (err) { fallo(err); return false; }
+  let areas = []; let mods = [];
+  try { [areas, mods] = await Promise.all([api('GET', '/proyectos/areas'), modalidades()]); } catch (err) { fallo(err); return false; }
   const espera = modal({
-    titulo: p ? `Proyecto ${p.codigo}` : 'Registrar proyecto', ancho: 800, contenido: formProyecto(p, areas),
+    titulo: p ? `Proyecto ${p.codigo}` : 'Registrar proyecto', ancho: 800, contenido: formProyecto(p, areas, mods),
     botones: [{ texto: 'Cancelar', valor: null }, { texto: p ? 'Guardar' : 'Registrar proyecto', clase: 'prim', valor: 'ok' }],
   });
   const form = document.querySelector('.modal form');
-  if (form) enlazarCaracteristicas(form);
+  if (form) enlazarModalidad(form, mods);
   const r = await espera;
   if (r.valor !== 'ok') return false;
   try {
@@ -90,7 +92,7 @@ async function registrarProyecto(p) {
       aviso('Proyecto guardado', 'exito');
     } else {
       const n = await api('POST', '/proyectos', r.datos);
-      aviso(`Proyecto registrado con el código ${n.codigo}.${n.con_profesionales ? ' Ahora registre sus profesionales.' : ''}`, 'exito');
+      aviso(`Proyecto registrado con el código ${n.codigo}.${n.modalidad === 'ORDEN_SERVICIO' ? ' Asigne su equipo y registre sus Órdenes de Servicio.' : n.con_profesionales ? ' Ahora registre sus profesionales.' : ''}`, 'exito');
     }
     await cargarProyectos(); pintarSelectorProyecto();
     return true;
@@ -153,11 +155,11 @@ export async function vistaProyectos(el) {
         <td class="desc"><b>${esc(p.nombre)}</b>${estado.usuario?.rol === 'JEFE_PROYECTO' && !p.escribe ? ' <span class="badge b-gris" title="No integra el equipo de este proyecto: puede consultarlo, no modificarlo">Solo lectura</span>' : ''}</td>
         <td>${esc(p.financiador || '—')}</td>
         <td class="num">${fecha(p.fecha_inicio)} – ${fecha(p.fecha_fin)}</td>
-        <td>${p.estado === 'CERRADO' ? '<span class="badge b-gris">Cerrado</span>' : '<span class="badge b-verde">Activo</span>'}</td>
+        <td>${badgeEstado(p.estado)}</td>
         <td class="d num">${p.activos} / ${p.profesionales}</td><td class="d num">${p.planes_aprobados} / ${p.profesionales}</td>
         <td style="white-space:nowrap">${p.con_profesionales ? `<button class="btn peq" data-ver="${p.proyecto_id}" type="button">Ver seguimiento</button>` : ''}
-          ${puedeProyecto(p.proyecto_id) && p.con_profesionales ? `<button class="btn peq" data-prof="${p.proyecto_id}" type="button" ${p.estado === 'CERRADO' ? 'disabled' : ''}>Registrar profesional</button>` : ''}
-          <button class="btn peq" data-equipo="${p.proyecto_id}" type="button">Equipo</button>${puede('ADMIN') ? `<button class="btn peq" data-editar="${p.proyecto_id}" type="button">Editar</button>` : ''}</td></tr>
+          ${puedeProyecto(p.proyecto_id) && p.con_profesionales ? `<button class="btn peq" data-prof="${p.proyecto_id}" type="button" ${['REGISTRADO', 'EN_EJECUCION'].includes(p.estado) ? '' : 'disabled title="El proyecto no admite nuevas contrataciones en su estado actual"'}>${p.modalidad === 'ORDEN_SERVICIO' ? 'Registrar Orden de Servicio' : 'Registrar profesional'}</button>` : ''}
+          <button class="btn peq" data-equipo="${p.proyecto_id}" type="button">Equipo</button>${(puede('ADMIN') || p.escribe) && !['CERRADO', 'ANULADO'].includes(p.estado) ? `<button class="btn peq" data-cerrar="${p.proyecto_id}" type="button">Cerrar proyecto</button>` : ''}${puede('ADMIN') ? `<button class="btn peq" data-editar="${p.proyecto_id}" type="button">Editar</button>` : ''}</td></tr>
         <tr class="proy-det"><td></td><td colspan="7"><dl class="proy-datos">
           <div><dt>Código</dt><dd>${esc(p.codigo)}</dd></div>
           <div><dt>Gestión del proyecto</dt><dd>${esc(p.area_tecnica || '—')}</dd></div>
@@ -166,19 +168,64 @@ export async function vistaProyectos(el) {
           <div><dt>Financiador</dt><dd>${esc(p.financiador || '—')}</dd></div>
           <div><dt>Inicio</dt><dd>${fecha(p.fecha_inicio)}</dd></div>
           <div><dt>Fin previsto</dt><dd>${fecha(p.fecha_fin)}</dd></div>
-          <div><dt>Estado</dt><dd>${p.estado === 'CERRADO' ? 'Cerrado' : 'Activo'}</dd></div>
+          <div><dt>Estado</dt><dd>${badgeEstado(p.estado)}${p.estado === 'CERRADO' && p.fecha_cierre ? ` el ${fecha(p.fecha_cierre)}` : ''}</dd></div>
+          ${p.estado === 'CERRADO' ? `<div class="ancho"><dt>Lecciones aprendidas</dt><dd style="white-space:pre-wrap">${esc(p.lecciones_aprendidas || '—')} <button class="btn peq" type="button" data-informe="${p.proyecto_id}">Ver informe de cierre</button></dd></div>` : ''}
+          <div><dt>Unidad usuaria</dt><dd>${esc(p.unidad_usuaria || '—')}</dd></div>
+          ${p.es_atipico ? `<div class="ancho"><dt>Motivo del caso atípico</dt><dd>${esc(p.motivo_atipico || '—')}</dd></div>` : ''}
+          ${p.objetivo ? `<div class="ancho"><dt>Objetivo</dt><dd>${esc(p.objetivo)}</dd></div>` : ''}
           <div class="ancho"><dt>Características</dt><dd>${caracteristicas(p).map((x) => `<span class="badge b-gris">${esc(x)}</span>`).join(' ')}</dd></div>
           <div class="ancho"><dt>Descripción</dt><dd>${esc(p.descripcion || '—')}</dd></div></dl></td></tr></tbody>`).join('')}
       ${lista.length ? '' : '<tbody><tr><td colspan="8" class="vacio">Aún no hay proyectos</td></tr></tbody>'}</table></div></div>`;
     el.querySelectorAll('[data-equipo]').forEach(b => { b.onclick = () => editarEquipo(Number(b.dataset.equipo)).then(pintar).catch(fallo); });
+    el.querySelectorAll('[data-cerrar]').forEach((b) => { b.onclick = async () => { if (await cerrarProyecto(Number(b.dataset.cerrar))) pintar(); }; });
+    el.querySelectorAll('[data-informe]').forEach((b) => {
+      b.onclick = async () => {
+        try { const ev = await api('GET', `/proyectos/${b.dataset.informe}/cierre`); if (ev.informe) window.open(`/api/documentos/${ev.informe.documento_id}/archivo`, '_blank', 'noopener'); else aviso('El proyecto no tiene informe de cierre registrado', 'error'); } catch (err) { fallo(err); }
+      };
+    });
     const buscar = (id) => lista.find((p) => p.proyecto_id === Number(id));
     const nuevo = el.querySelector('#b-nuevo-proy');
     if (nuevo) nuevo.onclick = async () => { if (await registrarProyecto(null)) pintar(); };
     el.querySelectorAll('[data-editar]').forEach((b) => { b.onclick = async () => { if (await registrarProyecto(buscar(b.dataset.editar))) pintar(); }; });
-    el.querySelectorAll('[data-prof]').forEach((b) => { b.onclick = async () => { if (await registrarProfesional(buscar(b.dataset.prof))) pintar(); }; });
+    el.querySelectorAll('[data-prof]').forEach((b) => {
+      b.onclick = async () => {
+        const p = buscar(b.dataset.prof);
+        if (await (p.modalidad === 'ORDEN_SERVICIO' ? registrarOrdenServicio(p) : registrarProfesional(p))) pintar();
+      };
+    });
     el.querySelectorAll('[data-ver]').forEach((b) => { b.onclick = () => { fijarProyecto(b.dataset.ver); pintarSelectorProyecto(); location.hash = '#/seguimiento'; }; });
   };
   await pintar();
+}
+
+/** Cierre formal (P9): muestra los requisitos y, si se cumplen, pide el informe de cierre y las lecciones aprendidas. */
+async function cerrarProyecto(id) {
+  let ev;
+  try { ev = await api('GET', `/proyectos/${id}/cierre`); } catch (err) { fallo(err); return false; }
+  const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+  const r = await modal({
+    titulo: `Cerrar el proyecto ${ev.proyecto.codigo}`, ancho: 720,
+    contenido: `<p class="mut" style="margin:0">${esc(ev.proyecto.nombre)}. El cierre deja el proyecto como terminado: ya no recibe Órdenes de Servicio, partes ni cambios.</p>
+      <table><thead><tr><th>Requisito</th><th>Situación</th></tr></thead><tbody>${ev.requisitos.map((q) => `<tr><td>${q.cumple ? '✔' : '✘'} ${esc(q.texto)}</td><td class="mut2">${esc(q.detalle)}</td></tr>`).join('')}</tbody></table>
+      ${ev.puede_cerrar ? `<div class="form">
+        <div class="campo"><label>Fecha de cierre</label><input type="date" name="fecha_cierre" value="${hoy}" max="${hoy}"></div>
+        <div class="campo ancho"><label>Informe de cierre (PDF) — obligatorio</label><input type="file" name="__informe" accept="application/pdf,.pdf"></div>
+        <div class="campo ancho"><label>Lecciones aprendidas</label><textarea name="lecciones_aprendidas" maxlength="2000" placeholder="Qué funcionó, qué no y qué conviene repetir o evitar en el próximo proyecto"></textarea></div></div>`
+        : '<p class="mut2" style="margin:0">Complete los requisitos pendientes para poder cerrar el proyecto.</p>'}`,
+    botones: ev.puede_cerrar ? [{ texto: 'Cancelar', valor: null }, { texto: 'Cerrar el proyecto', clase: 'prim', valor: 'ok' }] : [{ texto: 'Cerrar', valor: null }],
+  });
+  if (r.valor !== 'ok') return false;
+  try {
+    const archivo = r.form.elements.__informe.files[0];
+    if (!archivo) throw new Error('Adjunte el informe de cierre (PDF)');
+    const sub = await fetch('/api/documentos/temporales', { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', 'X-Nombre': encodeURIComponent(archivo.name) }, body: archivo, credentials: 'same-origin' });
+    const t = await sub.json().catch(() => ({}));
+    if (!sub.ok) throw new Error(`Informe de cierre: ${t.error || `Error ${sub.status}`}`);
+    await api('POST', `/proyectos/${id}/cierre`, { informe: t.token, lecciones_aprendidas: r.datos.lecciones_aprendidas, fecha_cierre: r.datos.fecha_cierre, revision: ev.proyecto.revision });
+    aviso(`Proyecto ${ev.proyecto.codigo} cerrado`, 'exito');
+    await cargarProyectos(); pintarSelectorProyecto();
+    return true;
+  } catch (err) { fallo(err); return false; }
 }
 
 /**

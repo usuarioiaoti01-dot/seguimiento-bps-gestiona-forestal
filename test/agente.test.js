@@ -171,3 +171,29 @@ test('Profesional: el asistente solo consulta su propia información', async () 
   const enviado = JSON.stringify(cliente.llamadas.map((l) => l.messages));
   assert.ok(!enviado.includes(otro.nombres), 'ningún dato de otro profesional llega al modelo');
 });
+
+test('lectura del TDR con IA: devuelve objeto, plazo y entregables, sin datos personales y sin escribir nada', async () => {
+  const { crearContrataciones } = require('../server/contrataciones');
+  const repo = crearRepositorioMemoria({ semilla });
+  const servicio = crearServicio(repo);
+  let enviado = '';
+  const cliente = { messages: { create: async (p) => {
+    enviado = p.messages[0].content;
+    assert.equal(p.tool_choice.name, 'registrar_tdr');
+    return { content: [{ type: 'tool_use', id: 't1', name: 'registrar_tdr', input: { objeto: 'Servicio de desarrollo del módulo de expedientes', perfil: 'Desarrollador', plazo_dias: 60,
+      entregables: [{ numero: 1, nombre: 'Plan de trabajo', plazo_dias: 15, porcentaje_pago: 20 }, { numero: 2, nombre: 'Informe final', plazo_dias: 60, porcentaje_pago: 80 }, { nombre: 'Informe sin plazo' }] } }], usage: { input_tokens: 10, output_tokens: 5 } };
+  } } };
+  const agente = crearAgente({ servicio, cliente });
+  const texto = `TÉRMINOS DE REFERENCIA. Objeto: desarrollo del módulo de expedientes. Contacto: juan.perez@correo.com, DNI 12345678, celular 987654321. ${'Detalle del servicio. '.repeat(10)}`;
+  const c = crearContrataciones({ servicio, repo, almacen: {}, leerDocumento: async () => ({ tipo: 'texto', texto }), extraerTdrConIA: (a) => agente.extraerDocumento({ ...a, modo: 'tdr' }) });
+  const ctx = { usuario: 'jefe@serfor.gob.pe' };
+  const { token } = c.subirTemporal(Buffer.from('%PDF-1.4\n%%EOF\n'), 'TDR.pdf', ctx);
+  const antes = (await repo.listarBitacora({ limite: 1000 })).length;
+  const r = await c.leerTdr(token, ctx);
+  assert.equal(r.plazo_dias, 60);
+  assert.deepEqual(r.entregables.map((e) => [e.nombre, e.plazo_dias, e.porcentaje_pago]), [['Plan de trabajo', 15, 20], ['Informe final', 60, 80], ['Informe sin plazo', null, null]]);
+  assert.ok(r.advertencias.some((a) => /no tienen un plazo claro/.test(a)));
+  assert.ok(!/juan\.perez@correo\.com|12345678|987654321/.test(enviado), 'a la IA no se envían datos personales');
+  assert.equal((await repo.listarBitacora({ limite: 1000 })).length, antes, 'la lectura no escribe datos del seguimiento');
+  await assert.rejects(c.leerTdr('ficha-inexistente', ctx), (e) => e.estado === 400);
+});

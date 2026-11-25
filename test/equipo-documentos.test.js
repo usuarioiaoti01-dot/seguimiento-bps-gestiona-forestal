@@ -197,8 +197,9 @@ test('API: el Administrador define el equipo; el Jefe de Proyecto lee todo y esc
   const beto = await nuevoJefe('beto.dev@serfor.gob.pe', 'Beto Desarrollo');
 
   // proyecto por Orden de Servicio con un profesional y su OS (PDF) cargados por el Administrador
-  const p = (await admin('POST', '/api/proyectos', { nombre: 'Proyecto con equipo de prueba', con_profesionales: 1, con_adendas: 0, con_linea_base: 0, con_orden_servicio: 1, con_tdr: 1 })).cuerpo;
-  const alta = await admin('POST', `/api/proyectos/${p.proyecto_id}/profesionales`, { clave: 'EQA', nombres: 'Elena Quispe Arias', contrato_numero: 'OS-EQ-001', adenda_inicio: '2026-11-02', adenda_plazo_dias: 60 });
+  const p = (await admin('POST', '/api/proyectos', { nombre: 'Proyecto con equipo de prueba' })).cuerpo; // modalidad ORDEN_SERVICIO
+  const temporal = async (c) => (await (await fetch(`${base}/api/documentos/temporales`, { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', Cookie: c.cookie() }, body: PDF })).json()).token;
+  const alta = await admin('POST', `/api/proyectos/${p.proyecto_id}/contrataciones`, { clave: 'EQA', nombres: 'Elena Quispe Arias', numero: 'OS-EQ-001', monto: 12000, plazo_dias: 60, entregables: [{ nombre: 'Informe final', plazo_dias: 60 }], documentos: { TDR: await temporal(admin), ORDEN_SERVICIO: await temporal(admin) } });
   assert.equal(alta.estado, 200, JSON.stringify(alta.cuerpo));
   const kid = alta.cuerpo.contrato.contrato_id;
   const subir = (c, ruta) => fetch(`${base}/api/contratos/${kid}/${ruta}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf', 'X-SGF': '1', Cookie: c.cookie() }, body: PDF });

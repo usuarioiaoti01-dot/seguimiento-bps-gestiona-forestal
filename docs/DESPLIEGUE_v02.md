@@ -10,6 +10,7 @@ sin ellas el servicio no inicia. Al revés no hay problema: el código anterior 
 | Parte | Quién | Estado |
 |---|---|---|
 | A. Scripts de base de datos `db/12` a `db/15` | DBA | **Hecha y verificada el 24/11/2026** (38 de 38 comprobaciones correctas) |
+| A'. Scripts `db/16`, `db/17` y `db/18` (Etapas 2 y 3: modalidad, Orden de Servicio con notificación, partes diarios) | DBA | **Pendiente**: obligatorios si se despliega el código con las Etapas 2 y 3 |
 | B. Código en el servidor de aplicaciones | OTI | Pendiente |
 | C. Después del despliegue | Administrador de la aplicación | Pendiente |
 
@@ -32,6 +33,18 @@ sin ellas el servicio no inicia. Al revés no hay problema: el código anterior 
 | `db/14_documento.sql` | Tabla temporal `sgf.documento` (metadatos de cada archivo: SHA-256, versión, confidencial) y 3 índices. | Al final muestra un conteo por tipo (vacío la primera vez). |
 | `db/15_equipo_proyecto.sql` | Tabla temporal `sgf.proyecto_miembro` y dos índices únicos filtrados. **Migración (solo si la tabla está vacía):** cada JEFE_PROYECTO activo queda en el equipo de todos los proyectos existentes, con registro en la bitácora (origen SCRIPT). | Al final lista los equipos. |
 
+### A.1' Scripts de la Etapa 2 (después de `db/15`)
+
+| Script | Qué hace | Verificación |
+|---|---|---|
+| `db/16_modalidad_proyecto.sql` | `sgf.proyecto.modalidad` (ORDEN_SERVICIO, CONTRATO_ADENDAS, GESTION_INTERNA) deducida de las características; GF2026 queda CONTRATO_ADENDAS con `es_atipico = 1` y su motivo. Amplía `estado` a VARCHAR(20) con REGISTRADO, EN_EJECUCION, SUSPENDIDO, CONCLUIDO, CERRADO y ANULADO; ACTIVO pasa a EN_EJECUCION. Agrega unidad usuaria, objetivo, fecha de cierre y lecciones aprendidas. | Al final lista código, modalidad, atípico y estado (GF2026: CONTRATO_ADENDAS, 1, EN_EJECUCION). |
+| `db/17_orden_servicio_entregables.sql` | `sgf.contrato`: notificación (fecha y medio), plazo, fin, monto, estado de la contratación (las existentes quedan EN_EJECUCION), OS anterior, culminación y fecha de registro. `sgf.adenda.tipo_periodo` (las existentes quedan ADENDA). Tabla temporal `sgf.entregable_servicio`. `sgf.actividad.entregable_servicio_id`. Parámetros `UMBRAL_ENTREGABLE_DIAS` (7) y `UMBRAL_BORRADOR_DIAS` (5). | Al final cuenta contrataciones por estado (11 EN_EJECUCION), periodos por tipo (todos ADENDA) y muestra los dos parámetros. |
+
+| `db/18_parte_diario.sql` | Tablas `sgf.parte_diario` y `sgf.parte_diario_item` (no temporales: **solo inserción**; el script NIEGA a `sgf_app` modificarlas o borrarlas, como la bitácora). `sgf.entregable_servicio.fecha_subsanacion`. Parámetros `PLAZO_REVISION_DIAS` (7), `PLAZO_SUBSANACION_DIAS` (5), `PARTE_DIAS_ATRAS` (3) y `UMBRAL_SIN_PARTE_DIAS` (3). | Al final muestra los DENY de `sgf_app` sobre las dos tablas y los cuatro parámetros. |
+
+Notas: `db/16` y `db/17` alteran tablas temporales (agregan columnas y restricciones; `db/16` amplía una columna): SQL Server 2016+
+lo admite con el versionado activo. Se pueden repetir sin riesgo.
+
 ### A.2 Comprobación final
 ```sql
 -- Tablas temporales nuevas: proyecto, documento, proyecto_miembro (además de las anteriores)
@@ -40,7 +53,8 @@ FROM sys.tables t JOIN sys.tables h ON h.object_id = t.history_table_id
 WHERE SCHEMA_NAME(t.schema_id) = 'sgf' AND t.temporal_type = 2 ORDER BY t.name;
 
 -- Ejecutado con el usuario de la aplicación: todo debe dar 1
-SELECT HAS_PERMS_BY_NAME('sgf.documento', 'OBJECT', 'INSERT')        AS documento_insert,
+SELECT HAS_PERMS_BY_NAME('sgf.entregable_servicio', 'OBJECT', 'INSERT') AS entregable_insert,  -- tras db/17
+       HAS_PERMS_BY_NAME('sgf.documento', 'OBJECT', 'INSERT')        AS documento_insert,
        HAS_PERMS_BY_NAME('sgf.documento', 'OBJECT', 'UPDATE')        AS documento_update,
        HAS_PERMS_BY_NAME('sgf.proyecto_miembro', 'OBJECT', 'INSERT') AS miembro_insert,
        HAS_PERMS_BY_NAME('sgf.proyecto_miembro', 'OBJECT', 'UPDATE') AS miembro_update;
