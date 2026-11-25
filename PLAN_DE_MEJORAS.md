@@ -405,6 +405,10 @@ Hecho (127 pruebas; sin scripts de base de datos nuevos). Revisión de código d
   el TDR con IA» en el registro de la OS: precarga objeto, perfil, plazo y entregables (con % de pago) para que el usuario
   los revise; no escribe nada y no envía datos personales. Requiere `ANTHROPIC_API_KEY` y la salida a api.anthropic.com.
 
+Diseño OTI Visual v2 en toda la aplicación, 25/11/2026 (docs/diseno/REDISENO-TABLERO-OTI.md): menú lateral agrupado con un solo proyecto desplegado, cabecera con corte y asistente, banda de resumen, acciones de atención ordenadas por riesgo, tarjetas analíticas que filtran, proyectos en tarjetas o tabla con filtros en la URL, tokens sin colores sueltos y semáforo siempre con glifo y texto. Reemplaza al primer rediseño del mismo día.
+
+Rediseño del Tablero general, 25/11/2026 (pedido del usuario): encabezado con el logo del SERFOR y el título «Seguimiento de Proyectos de la Oficina de Tecnologías de la Información»; gráficos animados (semáforo, avance, ciclo de la OS), lo que requiere atención, tarjetas por proyecto con cuenta regresiva del próximo entregable y una guía para leer el tablero.
+
 Reporte mensual para Gerencia por correo, 25/11/2026: el N.° día hábil configurado de cada mes se envía el PDF del mes anterior (todos los proyectos, sin montos salvo decisión de la Dirección) con la cuenta de Google Workspace del correo de alertas; una vez por mes, con reintento y registro en la bitácora; prueba y envío manual desde Configuración.
 
 Asistente de IA y plantilla Excel por proyecto, 25/11/2026: el asistente responde sobre el proyecto en pantalla con los conceptos de su modalidad, suma el tablero general y los partes diarios, y nunca recibe montos ni datos personales del texto libre; la plantilla lleva el proyecto y sus profesionales.

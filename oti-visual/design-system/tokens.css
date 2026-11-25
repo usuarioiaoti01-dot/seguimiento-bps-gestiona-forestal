@@ -26,6 +26,23 @@
   --neutral-fill: #eef0ec;
   --today: #1f4fd1;
   --marker: #1b2620;
+  --surface-sunk: #fafbf8;
+  --brand-ink: #155c39;
+  --brand-soft: #dbeadf;
+  --on-brand: #ffffff;
+  --progress: #3d8a5f;
+  --sidebar-inst: #164f35;
+  --sidebar-inst-line: #2b6649;
+  --on-inst: #ffffff;
+  --on-inst-muted: #c9ddd1;
+  --on-inst-progress: #9fe3bd;
+  --on-inst-risk: #ffb4ab;
+  --on-inst-ok: #9fe3bd;
+  --warn-line: #f0d9a8;
+  --none: #9aa79f;
+  --today-fill: #e6ecfb;
+  --scrim: rgba(10, 20, 15, 0.45);
+  --shadow-pop: 0 4px 16px rgba(27, 38, 32, 0.14);
   --shadow-tooltip: 0 4px 16px rgba(27, 38, 32, 0.14);
 }
 
@@ -54,6 +71,23 @@
   --neutral-fill: #1d2721;
   --today: #7fa2ff;
   --marker: #f2f6f3;
+  --surface-sunk: #121a16;
+  --brand-ink: #9fe3bd;
+  --brand-soft: #1d3a2a;
+  --on-brand: #0e1511;
+  --progress: #4fa477;
+  --sidebar-inst: #0f2a1d;
+  --sidebar-inst-line: #1f3d2c;
+  --on-inst: #ffffff;
+  --on-inst-muted: #c9ddd1;
+  --on-inst-progress: #9fe3bd;
+  --on-inst-risk: #ffb4ab;
+  --on-inst-ok: #9fe3bd;
+  --warn-line: #5a4316;
+  --none: #5d6b62;
+  --today-fill: #1a2440;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.5);
   --shadow-tooltip: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -83,7 +117,24 @@
     --neutral-fill: #1d2721;
     --today: #7fa2ff;
     --marker: #f2f6f3;
-    --shadow-tooltip: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --surface-sunk: #121a16;
+    --brand-ink: #9fe3bd;
+    --brand-soft: #1d3a2a;
+    --on-brand: #0e1511;
+    --progress: #4fa477;
+    --sidebar-inst: #0f2a1d;
+    --sidebar-inst-line: #1f3d2c;
+    --on-inst: #ffffff;
+    --on-inst-muted: #c9ddd1;
+    --on-inst-progress: #9fe3bd;
+    --on-inst-risk: #ffb4ab;
+    --on-inst-ok: #9fe3bd;
+    --warn-line: #5a4316;
+    --none: #5d6b62;
+    --today-fill: #1a2440;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-tooltip: 0 4px 16px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -98,6 +149,7 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-pill: 999px;
+  --focus-ring: 0 0 0 3px rgba(30, 107, 69, 0.35);
   --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
 }
 

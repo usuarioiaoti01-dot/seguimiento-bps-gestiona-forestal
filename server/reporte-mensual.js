@@ -11,7 +11,7 @@ const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', '
 const ff = (s) => (s ? String(s).slice(0, 10).split('-').reverse().join('/') : '—');
 const ESTADO = { REGISTRADO: 'Registrado', EN_EJECUCION: 'En ejecución', SUSPENDIDO: 'Suspendido', CONCLUIDO: 'Concluido', CERRADO: 'Cerrado', ANULADO: 'Anulado' };
 const MODALIDAD = { ORDEN_SERVICIO: 'Orden de Servicio', CONTRATO_ADENDAS: 'Contrato con adendas', GESTION_INTERNA: 'Gestión interna' };
-const SEM = { ROJO: 'Rojo', AMBAR: 'Ámbar', VERDE: 'Verde', AZUL: 'En revisión', GRIS: '—' };
+const SEM = { ROJO: 'En riesgo', AMBAR: 'Atención', VERDE: 'En plazo', AZUL: 'En plazo', GRIS: 'Sin seguimiento' }; // texto (Helvetica no tiene glifos ▲ ● ✓)
 const soles = (n) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (n) => (n === null || n === undefined ? '—' : `${Number(n).toLocaleString('es-PE', { maximumFractionDigits: 1 })} %`);
 
@@ -74,8 +74,9 @@ function generarPdfReporte(r) {
     doc.on('data', (t) => trozos.push(t));
     doc.on('end', () => resolver(Buffer.concat(trozos)));
     doc.on('error', rechazar);
-    const VERDE = '#1f5c44'; const GRIS = '#f1f3f1'; const LINEA = '#c9cfca';
-    const COLOR = { ROJO: '#b42318', AMBAR: '#b54708', VERDE: '#1f7a4d', AZUL: '#1d4ed8', GRIS: '#8a8f8b' };
+    // paleta OTI Visual (oti-visual/design-system/tokens.json): institucional, banda, líneas y semáforo
+    const VERDE = '#164f35'; const GRIS = '#f3f5f1'; const LINEA = '#c9d1c7';
+    const COLOR = { ROJO: '#8f1d14', AMBAR: '#7a4600', VERDE: '#155c39', AZUL: '#1f4fd1', GRIS: '#55655b' };
     const x0 = doc.page.margins.left;
     const ancho = doc.page.width - x0 - doc.page.margins.right;
     const fondo = () => doc.page.height - doc.page.margins.bottom;

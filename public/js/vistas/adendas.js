@@ -71,7 +71,7 @@ export async function vistaAdendas(el) {
       modal({
         titulo: nombre, ancho: 560, botones: [], cerrarTexto: true,
         contenido: `${a.documento_ref
-          ? `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--ambar, #b7791f)">ADENDA REGISTRADA · FALTA CARGAR EL PDF</p><p class="mut" style="text-align:center;margin:0 0 8px">${esc(a.documento_ref)}</p>`
+          ? `<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--warn-ink)">ADENDA REGISTRADA · FALTA CARGAR EL PDF</p><p class="mut" style="text-align:center;margin:0 0 8px">${esc(a.documento_ref)}</p>`
           : '<p style="margin:12px 0;text-align:center;font-size:18px;font-weight:700;color:var(--rojo)">SIN ADENDA REGISTRADA EN EL SISTEMA</p>'}
           <p class="mut" style="text-align:center;margin:0 0 12px">${editor ? 'Cargue el archivo PDF de la adenda para registrarlo.' : 'Solicite a un responsable que cargue el PDF de la adenda.'}</p>
           ${editor ? '<div style="text-align:center"><button type="button" class="btn prim" id="b-ir-documento">Cargar PDF de la adenda</button></div><p class="mut2" style="text-align:center;margin:12px 0 0">¿Es un escaneo, sin texto? <a href="#" id="b-subir-pdf">Guardar el PDF sin leerlo</a></p>' : ''}`,

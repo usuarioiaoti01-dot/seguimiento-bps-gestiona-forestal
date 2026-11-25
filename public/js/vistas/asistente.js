@@ -11,19 +11,14 @@ let conversacion = null;
 let panel = null;
 let contextoConsultor = null;
 
-export function montarAsistente() {
-  if (document.querySelector('.fab')) return;
-  const fab = document.createElement('button');
-  fab.className = 'fab';
-  fab.innerHTML = `${ICONOS.ia} Asistente IA`;
-  fab.onclick = () => abrirAsistente({});
-  document.body.appendChild(fab);
-}
+/** El asistente se abre con el botón «Asistente IA» de la cabecera (ya no hay botón flotante). */
+export function montarAsistente() { /* compatibilidad: el botón vive en la cabecera (app.js) */ }
 
 export function abrirAsistente({ consultor_id = null, texto = '' } = {}) {
   contextoConsultor = consultor_id;
   if (!panel) crearPanel();
   panel.style.display = 'flex';
+  document.body.classList.add('ia-abierta'); // en pantallas anchas el contenido se corre: el panel no lo tapa
   const t = panel.querySelector('textarea');
   if (texto) t.value = texto;
   t.focus();
@@ -34,14 +29,14 @@ function crearPanel() {
   panel.className = 'asistente';
   panel.setAttribute('aria-label', 'Asistente de IA');
   panel.innerHTML = `<div class="cab">${ICONOS.ia}<div><b>Asistente de seguimiento</b><br><span class="mut2">Claude Haiku · consulta, simula y propone; usted aprueba</span></div>
-      <button class="btn peq" id="ia-nueva" title="Nueva conversación">Nueva</button><button class="cerrar" id="ia-cerrar" aria-label="Cerrar">×</button></div>
+      <button class="btn peq" id="ia-nueva" title="Nueva conversación">Nueva</button><button class="btn peq" id="ia-cerrar">Cerrar</button></div>
     <div class="chat" id="ia-chat">${estado.ia ? '<div class="msg assistant"><p>Hola. Puedo revisar vigencias, fechas probables, actividades críticas y la línea base; simular reprogramaciones y preparar propuestas de actualización que usted aplica. ¿Qué necesita?</p></div>' : '<div class="msg assistant"><p>El asistente no está configurado en este servidor. Un administrador debe definir <code>ANTHROPIC_API_KEY</code> en el archivo .env.</p></div>'}</div>
     <div class="sugerencias">${SUGERENCIAS.map((s) => `<button>${esc(s)}</button>`).join('')}</div>
     <form class="entrada"><textarea placeholder="Escriba su consulta… (Enter envía, Mayús+Enter nueva línea)"></textarea><button class="btn prim" type="submit">Enviar</button></form>`;
   document.body.appendChild(panel);
   const chat = panel.querySelector('#ia-chat');
   const t = panel.querySelector('textarea');
-  panel.querySelector('#ia-cerrar').onclick = () => { panel.style.display = 'none'; };
+  panel.querySelector('#ia-cerrar').onclick = () => { panel.style.display = 'none'; document.body.classList.remove('ia-abierta'); document.getElementById('b-ia-cab')?.focus(); };
   panel.querySelector('#ia-nueva').onclick = () => { conversacion = null; chat.innerHTML = '<div class="msg assistant"><p>Nueva conversación iniciada.</p></div>'; };
   panel.querySelectorAll('.sugerencias button').forEach((b) => { b.onclick = () => { t.value = b.textContent; enviar(); }; });
   t.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });

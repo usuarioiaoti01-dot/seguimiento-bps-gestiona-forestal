@@ -370,3 +370,25 @@ test('tablero general: avance por % de pago, semáforo, próximo entregable y mo
   assert.equal(r.resumen.en_curso, 1);
   assert.equal(r.resumen.os_en_ejecucion, 1);
 });
+
+test('tablero general: avance promedio, días al próximo entregable y ciclo de la OS', () => {
+  const d = datosOS({ ultimo_parte: '2026-12-01', entregables: [
+    { estado: 'CONFORME', fecha_limite: '2026-12-01', porcentaje_pago: 40 },
+    { estado: 'PRESENTADO', fecha_limite: '2026-12-10', porcentaje_pago: 30 },
+    { fecha_limite: '2026-12-31', porcentaje_pago: 30 },
+  ] });
+  const r = construirPortafolio(d, construirEstado(d, { corte: '2026-12-02' }));
+  const p = r.proyectos[0];
+  assert.equal(p.proximo_entregable.numero, 2, 'el presentado sigue pendiente de conformidad');
+  assert.equal(p.proximo_entregable.dias, 8, 'del 02/12 al 10/12');
+  assert.deepEqual([p.entregables.conformes, p.entregables.en_revision, p.entregables.observados], [1, 1, 0]);
+  const s = r.resumen;
+  assert.equal(s.avance_promedio, p.avance, 'un solo proyecto con avance');
+  assert.deepEqual([s.entregables_conformes, s.entregables_en_revision, s.entregables_pendientes, s.os_culminadas], [1, 1, 2, 0]);
+  assert.equal(s.semaforo.GRIS, 0);
+  // vencido: días negativos
+  const v = construirPortafolio(d, construirEstado(d, { corte: '2026-12-12' })).proyectos[0];
+  assert.equal(v.proximo_entregable.dias, -2);
+  // sin proyectos con avance calculado: promedio nulo
+  assert.equal(construirPortafolio({ ...d, proyectos: [], consultores: [] }, construirEstado(d, { corte: '2026-12-02' })).resumen.avance_promedio, null);
+});

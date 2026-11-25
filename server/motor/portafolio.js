@@ -11,6 +11,8 @@
  *   GESTION_INTERNA   sin avance calculado.
  * Semáforo del proyecto: el peor entre el de sus entregables pendientes y el de la vigencia de sus profesionales activos
  * (ROJO > ÁMBAR > VERDE > AZUL > GRIS).
+ * Resumen: además de los conteos, avance_promedio (promedio simple de los proyectos en curso con avance) y el ciclo de
+ * la OS (registradas, en ejecución, entregables en revisión, observados y conformes, OS culminadas) para el tablero.
  */
 const { aDia, crearCalendario } = require('./calendario');
 const { parametro } = require('./estado');
@@ -18,6 +20,7 @@ const { parametro } = require('./estado');
 const PESO = { ROJO: 4, AMBAR: 3, VERDE: 2, AZUL: 1, GRIS: 0 };
 const EN_CURSO = ['REGISTRADO', 'EN_EJECUCION', 'SUSPENDIDO'];
 const TERMINADOS = ['CONCLUIDO', 'CERRADO'];
+const EN_REVISION = ['PRESENTADO', 'EN_REVISION', 'SUBSANADO']; // entregables presentados que esperan la conformidad del equipo
 const peor = (lista) => lista.reduce((p, s) => ((PESO[s] ?? 0) > (PESO[p] ?? 0) ? s : p), 'GRIS');
 const redondear = (n) => Math.round(n * 100) / 100;
 const vivo = (x) => x && x.activo !== 0 && x.activo !== false;
@@ -114,8 +117,9 @@ function construirPortafolio(datos, estado, { equipos = {} } = {}) {
       avance, semaforo,
       entregables: { total: entregables.length, pendientes: pendientes.length, vencidos: pendientes.filter((e) => e.vencido).length,
         por_vencer: pendientes.filter((e) => e.estado === 'PENDIENTE' && !e.vencido && e.semaforo === 'AMBAR').length,
-        revision_vencida: entregables.filter((e) => e.revision_vencida).length, conformes: entregables.filter((e) => e.estado === 'CONFORME').length },
-      proximo_entregable: proximo && { numero: proximo.numero, nombre: proximo.nombre, fecha_limite: proximo.fecha_limite, semaforo: proximo.semaforo, motivo: proximo.motivo, profesional: (itemDe(proximo) || { consultor: {} }).consultor.nombres || null },
+        revision_vencida: entregables.filter((e) => e.revision_vencida).length, conformes: entregables.filter((e) => e.estado === 'CONFORME').length,
+        en_revision: entregables.filter((e) => EN_REVISION.includes(e.estado)).length, observados: entregables.filter((e) => e.estado === 'OBSERVADO').length },
+      proximo_entregable: proximo && { numero: proximo.numero, nombre: proximo.nombre, fecha_limite: proximo.fecha_limite, dias: aDia(proximo.fecha_limite) - hoy, semaforo: proximo.semaforo, motivo: proximo.motivo, profesional: (itemDe(proximo) || { consultor: {} }).consultor.nombres || null },
       vencen_15_dias: items.filter((it) => it.consultor.estado === 'ACTIVO' && it.vigencia && it.vigencia.dias_restantes !== null && it.vigencia.dias_restantes >= 0 && it.vigencia.dias_restantes <= umbralVigencia).length,
       ultimo_parte: ultimoParte, dias_sin_parte: diasSinParte, sin_parte: diasSinParte !== null && diasSinParte > umbralSinParte,
       alertas: { total: alertas.length, altas: alertas.filter((a) => a.prioridad === 'ALTA').length },
@@ -129,6 +133,8 @@ function construirPortafolio(datos, estado, { equipos = {} } = {}) {
   });
 
   const enCurso = filas.filter((f) => f.en_curso);
+  const conAvance = enCurso.filter((f) => f.avance !== null && f.avance !== undefined);
+  const suma = (k) => filas.reduce((n, f) => n + f.entregables[k], 0);
   const resumen = {
     corte,
     proyectos: filas.length,
@@ -142,7 +148,12 @@ function construirPortafolio(datos, estado, { equipos = {} } = {}) {
     conformidades_fuera_de_plazo: filas.reduce((n, f) => n + f.entregables.revision_vencida, 0),
     vencen_15_dias: filas.reduce((n, f) => n + f.vencen_15_dias, 0),
     sin_parte: filas.filter((f) => f.sin_parte).length,
-    semaforo: { ROJO: enCurso.filter((f) => f.semaforo === 'ROJO').length, AMBAR: enCurso.filter((f) => f.semaforo === 'AMBAR').length, VERDE: enCurso.filter((f) => ['VERDE', 'AZUL'].includes(f.semaforo)).length },
+    semaforo: { ROJO: enCurso.filter((f) => f.semaforo === 'ROJO').length, AMBAR: enCurso.filter((f) => f.semaforo === 'AMBAR').length, VERDE: enCurso.filter((f) => ['VERDE', 'AZUL'].includes(f.semaforo)).length, GRIS: enCurso.filter((f) => f.semaforo === 'GRIS').length },
+    // promedio simple del avance de los proyectos en curso que lo tienen calculado (gestión interna no cuenta)
+    avance_promedio: conAvance.length ? Math.round((conAvance.reduce((n, f) => n + f.avance, 0) / conAvance.length) * 10) / 10 : null,
+    // ciclo de la Orden de Servicio: registrada → en ejecución → entregables en revisión → conformes → culminada
+    os_culminadas: filas.reduce((n, f) => n + f.os_culminadas, 0),
+    entregables_pendientes: suma('pendientes'), entregables_en_revision: suma('en_revision'), entregables_observados: suma('observados'), entregables_conformes: suma('conformes'),
   };
   return { resumen, proyectos: filas };
 }

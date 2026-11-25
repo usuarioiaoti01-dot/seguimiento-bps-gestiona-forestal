@@ -34,7 +34,7 @@ Usuarios: Director de TI (perfil **ADMIN**, «Dirección OTI»), Jefes de Proyec
 | **Solo en el equipo local, sin commit** | Todo lo de «Proyectos»: `db/12`, `db/13`, menú lateral por proyecto, características del proyecto, Orden de Servicio y TDR, registro del plan desde documento, nueva denominación, este handoff, `PLAN_DE_MEJORAS.md` y la **Etapa 1** (24/11/2026): `db/14` almacén documental, `db/15` equipo por proyecto y permisos, transacciones compuestas, migración de documentos. |
 
 - Repositorio: `https://github.com/usuarioiaoti01-dot/seguimiento-bps-gestiona-forestal` (cuenta institucional de la OTI; público por decisión del usuario). 16 commits en `main`.
-- Pruebas: **138** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
+- Pruebas: **139** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
 - Modo de trabajo acordado: el usuario prueba en `localhost:3080`; **solo se sube a GitHub cuando dice «sube los cambios al gh»**; no se pide aprobación de un plan antes de ejecutar (prevalece sobre `CLAUDE.md` §5). Los cambios llegan a producción con `git pull` + reinicio del servicio.
 
 ---
@@ -292,7 +292,7 @@ Regla: todo cambio de estructura = nuevo script `NN_descripcion.sql` + actualiza
 - `GF2026` conserva como «gestión del proyecto» el valor antiguo («Oficina de Tecnologías de la Información – OTI»), que no está entre las cuatro opciones; solo se reemplaza por una de ellas al editarlo.
 - `consultor.proyecto` (texto) sigue siendo obligatorio en la tabla; al registrar profesionales se llena con el nombre del proyecto. El vínculo real es `proyecto_id`.
 - Si el DBA ya corrió una versión anterior de `db/12` (con `cui` y `unidad_ejecutora`), esas columnas quedaron y no estorban.
-- El título de «Adendas - Plazos», los prompts del asistente y la plantilla Excel todavía mencionan Gestiona Forestal.
+- El título de «Línea base 2026» todavía menciona Gestiona Forestal (la línea base solo existe para GF2026). El asistente y la plantilla Excel ya se adaptan a cada proyecto.
 - Los nombres de las áreas y de los jefes de proyecto se escribieron con tildes y artículos; se pueden ajustar en `servicio.js` (`AREAS_TECNICAS`, `JEFES_PROYECTO`).
 - Las pruebas de `perfiles.test.js` ya no escriben en `data/` salvo `ADENDAS_PDF_DIR`; hay archivos de pruebas anteriores en `data/adendas-pdf` (ignorados por git).
 - Cuentas e identidades en el repositorio: la cuenta de GitHub es institucional (`usuarioiaoti01-dot`); el correo del administrador y las claves **no** están en el repositorio.

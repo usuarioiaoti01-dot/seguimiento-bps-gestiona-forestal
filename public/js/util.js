@@ -87,6 +87,38 @@ export function titulo(t, sub = '') {
   const el = document.getElementById('titulo');
   if (el) el.innerHTML = `<h1>${esc(t)}</h1>${sub ? `<small>${sub}</small>` : ''}`;
 }
+/** Botones propios de la vista en la cabecera (a la izquierda de «Corte al» y «Asistente IA»); se vacía al cambiar de vista. */
+export function accionesCabecera(html = '') {
+  const el = document.getElementById('cab-extra');
+  if (el) el.innerHTML = html;
+  return el;
+}
+
+/** Semáforo con glifo + texto (nunca solo color): nivel OTI Visual, glifo y etiqueta. */
+export const SEMAFORO = {
+  ROJO: { nivel: 'risk', glifo: '▲', texto: 'Atrasado o en riesgo' },
+  AMBAR: { nivel: 'warn', glifo: '●', texto: 'Requiere atención' },
+  VERDE: { nivel: 'ok', glifo: '✓', texto: 'En plazo' },
+  AZUL: { nivel: 'ok', glifo: '✓', texto: 'En plazo' },
+  GRIS: { nivel: 'none', glifo: '–', texto: 'Sin seguimiento' },
+};
+export const semInfo = (s) => SEMAFORO[s] || SEMAFORO.GRIS;
+export const insignia = (s, texto) => { const x = semInfo(s); return `<span class="ins ins-${x.nivel}"><span aria-hidden="true">${x.glifo}</span>${esc(texto || x.texto)}</span>`; };
+
+/** Panel lateral derecho (400 px) con velo; se cierra con Esc, con el velo o con «Cerrar». */
+export function panelLateral({ titulo: t, contenido }) {
+  document.querySelectorAll('.panel-lateral, .velo-panel').forEach((x) => x.remove());
+  const velo = document.createElement('div'); velo.className = 'velo-panel';
+  const p = document.createElement('aside'); p.className = 'panel-lateral'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-label', t);
+  p.innerHTML = `<div class="pl-cab"><h2>${esc(t)}</h2><button type="button" class="btn peq" data-cerrar>Cerrar</button></div><div class="pl-cuerpo">${contenido}</div>`;
+  const cerrar = () => { p.remove(); velo.remove(); document.removeEventListener('keydown', tecla); };
+  const tecla = (e) => { if (e.key === 'Escape') cerrar(); };
+  velo.onclick = cerrar; p.querySelector('[data-cerrar]').onclick = cerrar;
+  document.addEventListener('keydown', tecla);
+  document.body.append(velo, p);
+  p.querySelector('[data-cerrar]').focus();
+  return { cerrar, el: p };
+}
 
 export function aviso(texto, tipo = '') {
   const el = document.createElement('div');
@@ -175,7 +207,18 @@ export const ICONOS = {
   bitacora: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   ia: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>',
-  logo: '<svg width="34" height="34" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="rgba(255,255,255,.14)"/><path d="M16 5l7 10h-4l5 7h-5v5h-6v-5H8l5-7H9z" fill="#e8f3ec"/></svg>',
+  libro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 9h6M9 13h6"/></svg>',
+  editar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
+  cuadricula: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>',
+  ayuda: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/></svg>',
+  abajo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  derecha: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
+  mas: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  lineas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  buscar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
 };
 
 export const puedeProyecto = (id = estado.proyecto_id) => estado.usuario?.rol === 'ADMIN' || (estado.usuario?.rol === 'JEFE_PROYECTO' && estado.proyectos.some(p => p.proyecto_id === Number(id) && p.escribe));
