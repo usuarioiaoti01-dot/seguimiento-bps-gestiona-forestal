@@ -53,6 +53,21 @@ const config = {
     cookieSegura: bool(e.COOKIE_SEGURA, false),
   },
   admin: { correo: e.ADMIN_CORREO, nombre: e.ADMIN_NOMBRE || 'Administrador OTI', clave: e.ADMIN_CLAVE_INICIAL },
+  // Correo diario de alertas (P11) por Google Workspace (smtp.gmail.com). Desactivado hasta que se configure.
+  correo: {
+    activo: bool(e.ALERTAS_CORREO, false),
+    hora: /^\d{2}:\d{2}$/.test(e.ALERTAS_HORA || '') ? e.ALERTAS_HORA : '07:30', // hora de Lima
+    soloHabiles: bool(e.ALERTAS_SOLO_HABILES, true),
+    copiaAdmin: bool(e.ALERTAS_COPIA_ADMIN, true),
+    remitente: (e.CORREO_REMITENTE || '').trim(), // cuenta @serfor.gob.pe que envía
+    nombre: e.CORREO_NOMBRE || 'Seguimiento de Proyectos – OTI SERFOR',
+    modo: (e.CORREO_MODO || 'clave').toLowerCase(), // clave (contraseña de aplicación) | cuenta_servicio (OAuth2 con delegación de dominio)
+    clave: e.CORREO_CLAVE, // contraseña de aplicación de la cuenta remitente
+    cuentaServicio: e.CORREO_CUENTA_SERVICIO_JSON, // ruta del JSON de la cuenta de servicio (fuera del repositorio)
+    servidor: e.CORREO_SMTP || 'smtp.gmail.com',
+    puerto: Number(e.CORREO_PUERTO || 465),
+    urlAplicacion: (e.URL_APLICACION || 'https://serforia.serfor.gob.pe').replace(/\/+$/, ''),
+  },
   ia: {
     claveApi: e.ANTHROPIC_API_KEY,
     modelo: e.ANTHROPIC_MODELO || 'claude-haiku-5-5',

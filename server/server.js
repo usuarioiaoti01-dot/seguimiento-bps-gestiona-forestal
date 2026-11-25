@@ -27,6 +27,7 @@ const { construirPortafolio, totalesMonto } = require('./motor/portafolio');
 const { crearCierre } = require('./cierre');
 const { construirReporte, generarPdfReporte, rangoMes } = require('./reporte-mensual');
 const { construirExpediente } = require('./documentos/expediente');
+const { crearAlertasCorreo } = require('./correo');
 
 async function crearApp() {
   // El repositorio va envuelto: toda escritura respeta el alcance por proyecto del usuario (permisos.js, db/15)
@@ -635,6 +636,18 @@ async function crearApp() {
       app.post(`/api/${ruta}`, seg.requiere(nivel), h((req) => servicio.crearEntidad(entidad, req.body, ctx(req))));
     }
   }
+
+  // ------------------------------------------------------------ correo diario de alertas (P11, Google Workspace; solo el Administrador)
+  const alertasCorreo = crearAlertasCorreo({ config: config.correo, servicio, repo });
+  alertasCorreo.programar();
+  const sinHtml = ({ html, ...c }) => c;
+  app.get('/api/alertas-correo', seg.requiere('ADMIN'), h(async (req) => ({
+    configuracion: alertasCorreo.publico(), ultimo_envio: await alertasCorreo.ultimoEnvio(),
+    correos: (await alertasCorreo.vistaPrevia()).map(req.query.html === '1' ? (c) => c : sinHtml),
+  })));
+  app.post('/api/alertas-correo/probar-conexion', seg.requiere('ADMIN'), h(() => alertasCorreo.probarConexion()));
+  // prueba: solo el correo que le tocaría al Administrador que la pide (no se registra como envío del día)
+  app.post('/api/alertas-correo/enviar', seg.requiere('ADMIN'), h((req) => alertasCorreo.enviar((req.body || {}).prueba ? { soloA: req.usuario.correo } : { usuario: req.usuario.correo, origen: 'UI' })));
 
   // ------------------------------------------------------------ configuración (ADMIN)
   app.put('/api/parametros/:codigo', seg.requiere('JEFE_PROYECTO'), h(async (req) => {

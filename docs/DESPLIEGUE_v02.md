@@ -119,6 +119,30 @@ En PowerShell como administrador:
 
 ---
 
+## D. Correo diario de alertas (Google Workspace)
+
+Desde el commit que lo agrega, la aplicación usa la dependencia `nodemailer`: al actualizar el código hay que correr
+`npm ci --omit=dev` antes de reiniciar. El correo queda **desactivado** hasta completar estos pasos.
+
+1. **Cuenta remitente.** Una cuenta de Google Workspace de la OTI (p. ej. `alertas.oti@serfor.gob.pe`), no una personal.
+2. **Autenticación**, una de las dos:
+   - **Contraseña de aplicación** (lo más simple): en la cuenta remitente, activar la verificación en dos pasos y crear una
+     contraseña de aplicación (Cuenta de Google → Seguridad → Contraseñas de aplicación). El administrador de Workspace debe
+     permitirlas. Va en `CORREO_CLAVE` con `CORREO_MODO=clave`.
+   - **Cuenta de servicio con delegación de dominio** (si el dominio no permite contraseñas de aplicación): crear la cuenta de
+     servicio en Google Cloud, descargar su JSON y, en la Consola de administración de Workspace (Seguridad → Acceso y control
+     de datos → Controles de API → Delegación de todo el dominio), autorizar su *client ID* con el alcance
+     `https://mail.google.com/`. Guardar el JSON fuera del repositorio (p. ej. `C:\datos\seguimiento\secretos\correo.json`,
+     solo lectura para la cuenta del servicio) y poner su ruta en `CORREO_CUENTA_SERVICIO_JSON` con `CORREO_MODO=cuenta_servicio`.
+3. **Red:** abrir la salida del servidor de aplicaciones a `smtp.gmail.com`, puerto **465** (TCP).
+4. **.env** del servidor (ver `.env.example`): `CORREO_REMITENTE`, `CORREO_MODO` y su credencial, `ALERTAS_HORA` (por
+   defecto 07:30), `ALERTAS_SOLO_HABILES`, `ALERTAS_COPIA_ADMIN`, `URL_APLICACION`. Dejar `ALERTAS_CORREO=false` al inicio.
+5. Reiniciar el servicio y, como Administrador, en **Configuración → Correo diario de alertas**: «Probar conexión», luego
+   «Enviarme una prueba» y revisar la «Vista previa».
+6. Si todo está bien, poner `ALERTAS_CORREO=true` y reiniciar. Cada envío queda en la Bitácora (entidad `correo_alertas`).
+
+---
+
 ## Volver atrás (si hiciera falta)
 Las tablas y columnas nuevas no estorban al código anterior. Basta con volver el código a `main` y reiniciar:
 ```powershell

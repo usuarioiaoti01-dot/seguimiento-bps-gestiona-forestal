@@ -60,6 +60,42 @@ export async function vistaConfiguracion(el) {
   el.querySelectorAll('[data-u]').forEach((b) => { b.onclick = () => editarUsuario(usuarioDe(b.dataset.u), consultores, usuarios); });
   el.querySelectorAll('[data-reset]').forEach((b) => { b.onclick = () => restablecerClave(usuarioDe(b.dataset.reset)); });
   el.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => cambiarActivo(usuarioDe(b.dataset.act)); });
+  if (admin) tarjetaCorreo(el).catch((err) => console.warn('[correo de alertas]', err.message));
+}
+
+/** Correo diario de alertas por Google Workspace (P11): estado, vista previa, prueba y envío manual. */
+async function tarjetaCorreo(el) {
+  const r = await api('GET', '/alertas-correo');
+  const c = r.configuracion; const u = r.ultimo_envio;
+  const estadoTxt = !c.configurado ? `<span class="badge b-ambar">Sin configurar</span> <span class="mut2">${esc(c.motivo)}</span>`
+    : c.activo ? `<span class="badge b-verde">Activo</span> <span class="mut2">todos los días${c.solo_habiles ? ' hábiles' : ''} a las ${esc(c.hora)} (hora de Lima)</span>`
+      : '<span class="badge b-gris">Configurado, desactivado</span> <span class="mut2">ALERTAS_CORREO=false</span>';
+  el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="t-correo"><div class="cab"><h2>Correo diario de alertas</h2><div class="acciones">
+      <button class="btn peq" id="b-c-prev">Vista previa (${r.correos.length})</button>
+      ${c.configurado ? '<button class="btn peq" id="b-c-con">Probar conexión</button><button class="btn peq" id="b-c-prueba">Enviarme una prueba</button><button class="btn peq prim" id="b-c-env">Enviar ahora</button>' : ''}</div></div>
+    <div class="cuerpo"><div class="datos">
+      <div class="dato"><small>Estado</small><div>${estadoTxt}</div></div>
+      <div class="dato"><small>Remitente (Google Workspace)</small><b>${esc(c.remitente || '—')}</b><small>${c.modo === 'cuenta_servicio' ? 'cuenta de servicio con delegación de dominio' : 'contraseña de aplicación'}</small></div>
+      <div class="dato"><small>Último envío</small><b class="num">${u ? `${esc(u.fecha ? u.fecha.split('-').reverse().join('/') : fh(u.registrado))}` : '—'}</b>${u ? `<small>${u.enviados ?? 0} enviado(s)${u.fallidos ? ` · ${u.fallidos} con error` : ''} · ${esc(u.origen === 'UI' ? `manual (${u.usuario})` : 'automático')}</small>` : ''}</div>
+    </div></div>
+    <div class="cuerpo mut2">Cada Jefe de Proyecto recibe las alertas de los proyectos de su equipo${c.copia_admin ? ' y el Administrador, el resumen de todos' : ''}: entregables por vencer o vencidos, subsanaciones y conformidades fuera de plazo, partes diarios faltantes, Órdenes de Servicio sin notificar y vigencias por vencer. Sin alertas no se envía nada. La configuración está en el <code>.env</code> del servidor (CORREO_* y ALERTAS_*).</div></div>`);
+  const t = el.querySelector('#t-correo');
+  t.querySelector('#b-c-prev').onclick = () => modal({
+    titulo: `Correos que se enviarían hoy (${r.correos.length})`, ancho: 860,
+    contenido: r.correos.length ? r.correos.map((x) => `<details class="tarjeta" style="margin:0 0 8px"><summary class="cuerpo"><b>${esc(x.para)}</b> · ${esc(x.asunto)} <span class="mut2">(${esc((x.proyectos || []).join(', '))})</span></summary>
+      <pre class="cuerpo" style="white-space:pre-wrap;margin:0;font-size:12px">${esc(x.texto)}</pre></details>`).join('') : '<div class="vacio">Hoy no hay alertas que enviar.</div>',
+  });
+  const accion = async (boton, fn) => { boton.disabled = true; try { await fn(); } catch (err) { fallo(err); } finally { boton.disabled = false; } };
+  const bcon = t.querySelector('#b-c-con');
+  if (bcon) bcon.onclick = () => accion(bcon, async () => { await api('POST', '/alertas-correo/probar-conexion'); aviso('Conexión con Google Workspace correcta', 'exito'); });
+  const bpr = t.querySelector('#b-c-prueba');
+  if (bpr) bpr.onclick = () => accion(bpr, async () => { const x = await api('POST', '/alertas-correo/enviar', { prueba: true }); aviso(x.enviados.length ? `Prueba enviada a ${x.enviados[0]}` : `No se pudo enviar: ${(x.fallidos[0] || {}).error || 'sin destinatario'}`, x.enviados.length ? 'exito' : 'error'); });
+  const benv = t.querySelector('#b-c-env');
+  if (benv) benv.onclick = async () => {
+    const ok = await modal({ titulo: 'Enviar ahora el correo de alertas', contenido: `<p style="margin:0">Se enviarán ${r.correos.length} correo(s) a los Jefes de Proyecto${c.copia_admin ? ' y al Administrador' : ''}. Quedará registrado como el envío de hoy (el automático ya no se repetirá).</p>`, botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar', clase: 'prim', valor: 'ok' }] });
+    if (ok.valor !== 'ok') return;
+    accion(benv, async () => { const x = await api('POST', '/alertas-correo/enviar', {}); aviso(`${x.enviados.length} correo(s) enviado(s)${x.fallidos.length ? `, ${x.fallidos.length} con error` : ''}`, x.fallidos.length ? 'error' : 'exito'); window.sgfRefrescar(); });
+  };
 }
 
 /** Muestra las claves temporales (una sola vez) con un botón para copiarlas. */

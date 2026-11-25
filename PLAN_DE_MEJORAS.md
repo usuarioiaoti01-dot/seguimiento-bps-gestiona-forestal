@@ -414,8 +414,9 @@ Expediente del proyecto (§8, pestaña «Documentos»), 25/11/2026: opción «Ex
 Integración con SQL Server real (25/11/2026): `test/integracion-sqlserver.test.js` recorre registro, corrección de entregables, notificación y su corrección, plan aprobado, partes con evidencia y rectificación, ciclo de entregables, culminación, cierre, anulación, resolución, ampliación, tablero, CSV y reporte PDF; verifica la reversión de transacciones, el 403 dentro de la transacción y operaciones simultáneas (200 o 409, sin bloqueos). Pasa contra una base limpia instalada con `bd:instalar`.
 
 Pendiente:
-- **Correo de alertas** diario (P11): requiere definir el servidor de correo institucional (SMTP o Google Workspace),
-  la cuenta remitente y agregar una dependencia de envío; además, abrir la salida desde el servidor de aplicaciones.
+- **Correo de alertas** diario (P11): **programado el 25/11/2026** con Google Workspace (decisión del usuario), desactivado
+  hasta configurarlo: falta la cuenta remitente, su contraseña de aplicación (o una cuenta de servicio con delegación de
+  dominio) y abrir la salida a `smtp.gmail.com:465` desde el servidor (docs/DESPLIEGUE_v02.md, parte D).
 - **Penalidad referencial** (R-OS6): confirmar la fórmula y el tope con Abastecimiento antes de programarla.
 - Inicio de sesión con Google Workspace (SSO).
 ---
