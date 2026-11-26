@@ -25,6 +25,30 @@ export function nombreCorto(nombres) {
   return `${t[0]} ${t[t.length - 2]}`;
 }
 
+/** Estados en que el entregable ya fue presentado (aunque espere conformidad o tenga observaciones). */
+export const PRESENTADOS = ['PRESENTADO', 'EN_REVISION', 'OBSERVADO', 'SUBSANADO', 'CONFORME'];
+
+/**
+ * Avance (%) según los entregables presentados: la suma de su % de pago si todos lo tienen; si no, la proporción
+ * de entregables presentados. null si no hay entregables.
+ */
+export function avanceEntregables(lista) {
+  const vivos = (lista || []).filter((x) => x.estado !== 'ANULADO');
+  if (!vivos.length) return null;
+  const pres = vivos.filter((x) => PRESENTADOS.includes(x.estado));
+  const conPct = vivos.every((x) => x.porcentaje_pago !== null && x.porcentaje_pago !== undefined && x.porcentaje_pago !== '');
+  const total = conPct ? vivos.reduce((s, x) => s + Number(x.porcentaje_pago), 0) : 0;
+  const v = conPct && total > 0 ? (pres.reduce((s, x) => s + Number(x.porcentaje_pago), 0) / total) * 100 : (pres.length / vivos.length) * 100;
+  return Math.round(v);
+}
+
+/** Término de una Orden de Servicio (sin plan): la fecha límite de su último entregable o, si no la hay, el fin de la OS. */
+function terminoDeOS(c, fin) {
+  if (!c.estado_contratacion) return null; // contrato con adendas (GF2026): sin plan no hay término
+  const limites = ((c.entregables && c.entregables.lista) || []).filter((x) => x.estado !== 'ANULADO' && x.fecha_limite).map((x) => fechaIso(x.fecha_limite)).sort();
+  return limites[limites.length - 1] || fin;
+}
+
 /**
  * @param {Array} consultores  `consultores` de GET /api/estado
  * @returns {{ datos: Array, descartados: Array<{clave: string, motivo: string}>, consultorPorId: Object }}
@@ -51,11 +75,19 @@ export function adaptarVigencias(consultores) {
         inicio,
         fin,
         adenda: potencial && potencial > fin ? potencial : null, // solo si la adenda en trámite amplía la vigencia
-        terminoProbable: fechaIso(c.pronostico && c.pronostico.fin_probable),
+        // Con plan aprobado, su término probable; en una Orden de Servicio sin plan, el término es el que fija la OS:
+        // la fecha límite de su último entregable (o el fin de la OS), no «sin término probable»
+        terminoProbable: fechaIso(c.pronostico && c.pronostico.fin_probable) || terminoDeOS(c, fin),
         // historial: adendas concluidas (gris), días sin cobertura (rojo) y superposiciones (inconsistencia)
         historial: (c.historial_adendas || []).map((h) => ({ numero: h.numero, inicio: fechaIso(h.fecha_inicio), fin: fechaIso(h.fecha_fin), plazoDias: h.plazo_dias ?? null, plazoSolicitadoDias: h.plazo_solicitado_dias ?? null })),
         brechas: ((c.cobertura && c.cobertura.brechas) || []).map((t) => ({ inicio: fechaIso(t.desde), fin: fechaIso(t.hasta), dias: t.dias })),
         superposiciones: ((c.cobertura && c.cobertura.superposiciones) || []).map((t) => ({ inicio: fechaIso(t.desde), fin: fechaIso(t.hasta), dias: t.dias })),
+        // entregables de la Orden de Servicio vigente (marcas en su fecha límite y avance por los presentados)
+        entregables: ((c.entregables && c.entregables.lista) || []).filter((x) => x.estado !== 'ANULADO').map((x) => ({
+          numero: x.numero, nombre: x.nombre, fechaLimite: fechaIso(x.fecha_limite), fechaPresentacion: fechaIso(x.fecha_presentacion),
+          presentado: PRESENTADOS.includes(x.estado), conforme: x.estado === 'CONFORME', vencido: !!x.vencido,
+        })),
+        avance: avanceEntregables(c.entregables && c.entregables.lista),
       });
       consultorPorId[String(c.clave)] = c.consultor_id;
     } catch (err) {

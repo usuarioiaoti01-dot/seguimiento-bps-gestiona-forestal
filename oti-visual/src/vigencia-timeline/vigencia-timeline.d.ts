@@ -20,7 +20,13 @@ export interface ContratoVigencia {
   adenda?: string | null;
   /** Término probable del plan de trabajo; null si no se ha estimado. */
   terminoProbable?: string | null;
+  /** Entregables (con `mostrarEntregables`): marca numerada en su fecha límite y barra de avance hasta el último presentado. */
+  entregables?: EntregableVigencia[];
+  /** Avance (%) por los entregables presentados; se muestra en el tooltip. */
+  avance?: number | null;
 }
+
+export interface EntregableVigencia { numero: number; nombre?: string; fechaLimite: string | null; fechaPresentacion?: string | null; presentado: boolean; conforme?: boolean; vencido?: boolean }
 
 /** Periodo 'AAAA-MM-DD'. `dias` = días del tramo. */
 export interface Tramo { inicio: string; fin: string; dias?: number }
@@ -58,6 +64,8 @@ export interface VigenciaTimelineOptions {
   tramoSinCobertura?: boolean;
   /** Ancho de la columna de nombres de fila, en unidades del gráfico (viewBox de 1060). Por defecto 76. */
   anchoEtiqueta?: number;
+  /** true: marca de cada entregable en su fecha límite (presentado, por presentar o vencido) y barra de avance. Por defecto false. */
+  mostrarEntregables?: boolean;
   onModoChange?: (modo: ModoBrecha) => void;
   onRowClick?: (row: FilaCalculada) => void;
 }

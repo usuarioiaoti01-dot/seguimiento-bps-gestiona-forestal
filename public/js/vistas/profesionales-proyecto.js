@@ -1,5 +1,6 @@
 import { api, esc, ff, modal, aviso, fallo, puedeProyecto } from '../util.js';
-import { registrarOrdenServicio, registrarNotificacion, ampliarPlazo, resolverOS, anularOS, verEntregables, SEMAFORO_ENT, ESTADO_OS, soles } from './orden-servicio.js';
+import { PRESENTADOS, avanceEntregables } from '../vigencia-adaptador.js';
+import { registrarOrdenServicio, registrarNotificacion, ampliarPlazo, resolverOS, anularOS, verEntregables, SEMAFORO_ENT, ESTADO_OS, soles, nombreEntregable } from './orden-servicio.js';
 
 const MAX_PDF = 15 * 1024 * 1024;
 const fecha = (s) => (s ? ff(String(s).slice(0, 10)) : '—');
@@ -49,39 +50,75 @@ const SITUACION = {
 };
 const MEDIO = { CORREO: 'correo', PRESENCIAL: 'presencial', MESA_PARTES: 'mesa de partes', SISTEMA: 'sistema de trámite' };
 
-/** Modalidad Orden de Servicio (Etapa 2): OS, notificación, vencimiento, próximo entregable, documentos y acciones. */
-function tablaOS(p, lista) {
+/**
+ * Modalidad Orden de Servicio (Etapa 2): una tarjeta por profesional. Título «NOMBRE - Proyecto (código)», debajo sus
+ * botones (documentos y acciones) y luego los datos sin desplazamiento horizontal: perfil, OS, notificación,
+ * vencimiento y la fecha límite del próximo entregable (la calcula el servidor: notificación + plazo del entregable).
+ */
+/** Entregables presentados de la OS vigente: avance (por % de pago o por cantidad) y cada uno con su fecha y situación. */
+const SIT_PRESENTADO = { PRESENTADO: ['b-azul', 'En revisión'], EN_REVISION: ['b-azul', 'En revisión'], OBSERVADO: ['b-ambar', 'Observado'], SUBSANADO: ['b-azul', 'Subsanado'], CONFORME: ['b-verde', 'Conforme'] };
+function presentadosOS(c) {
+  const lista = ((c.entregables && c.entregables.lista) || []).filter((x) => x.estado !== 'ANULADO');
+  if (!lista.length) return '';
+  const pres = lista.filter((x) => PRESENTADOS.includes(x.estado));
+  const avance = avanceEntregables(lista) ?? 0;
+  const conformes = pres.filter((x) => x.estado === 'CONFORME').length;
+  return `<div class="pos-ent">
+    <div class="pos-ent-cab"><span class="pos-ent-tit">Entregables presentados</span><b>${pres.length} de ${lista.length}</b><span class="mut2">· avance ${avance} %${conformes ? ` · ${conformes} conforme(s)` : ''}</span>
+      <span class="pry-tiempo pos-ent-barra" role="img" aria-label="Avance por entregables presentados: ${avance} %"><i style="width:${avance}%"></i></span></div>
+    ${pres.length ? `<ul class="pos-ent-lista">${pres.map((x) => { const [cl, tx] = SIT_PRESENTADO[x.estado] || ['b-gris', x.estado]; return `<li><span class="ent-num">${x.numero}</span><span class="pos-ent-nom">${esc(nombreEntregable(x.nombre))}</span><span class="pos-ent-fecha">Presentado el ${ff(x.fecha_presentacion)}${x.dias_atraso ? ` · ${x.dias_atraso} d de atraso` : ''}${x.fecha_conformidad ? ` · conforme el ${ff(x.fecha_conformidad)}` : ''}</span><span class="badge ${cl}">${tx}</span></li>`; }).join('')}</ul>`
+      : '<p class="mut2" style="margin:0">Aún no presenta entregables.</p>'}
+  </div>`;
+}
+
+function tarjetasOS(p, lista) {
   const puedeEd = puedeProyecto(p.proyecto_id);
+  const nueva = puedeEd ? '<button type="button" class="btn peq prim" id="b-nueva-os">Registrar Orden de Servicio</button>' : '';
+  if (!lista.length) {
+    return `<div class="tarjeta"><div class="cab"><h2>Profesionales del proyecto ${esc(p.codigo)}</h2>${nueva ? `<div class="acciones">${nueva}</div>` : ''}</div>
+      <div class="cuerpo"><div class="vacio">Aún no hay profesionales registrados en este proyecto${puedeEd ? ': use «Registrar Orden de Servicio»' : ''}.</div></div></div>`;
+  }
   const verMonto = lista.some((c) => c.monto !== undefined);
   const pdf = (c, ruta, info, etiqueta) => (info.existe
     ? `<button class="btn peq" type="button" data-pdf="/api/contratos/${c.contrato_id}/${ruta}" data-titulo="${esc(etiqueta)} · ${esc(c.nombres)}">${esc(etiqueta)}</button>`
-    : `<span class="badge b-ambar" title="${esc(etiqueta)} pendiente">${esc(etiqueta)}: falta</span>${puedeEd ? ` <button class="btn peq" type="button" data-subir="${c.contrato_id}|${ruta}">Adjuntar</button>` : ''}`);
-  return `<table><thead><tr><th>Profesional</th><th>Orden de Servicio</th><th>Notificación</th><th>Vence</th><th>Próximo entregable</th><th>Documentos</th><th></th></tr></thead><tbody>
-    ${lista.map((c) => {
-      const [cOS, tOS] = ESTADO_OS[c.estado_contratacion] || ESTADO_OS.REGISTRADA;
-      const [cl, tx] = SITUACION[c.situacion] || SITUACION.SIN_PERIODO;
-      const dias = c.dias_restantes === null ? '' : c.dias_restantes < 0 ? ` · hace ${-c.dias_restantes} d` : ` · ${c.dias_restantes} d`;
-      const pr = c.entregables && c.entregables.proximo;
-      const [cE, tE] = pr ? SEMAFORO_ENT[pr.semaforo] || SEMAFORO_ENT.GRIS : SEMAFORO_ENT.GRIS;
-      const sinNotificar = c.estado_contratacion === 'REGISTRADA';
-      return `<tr><td class="desc"><b>${esc(c.nombres)}</b><small>${esc(c.clave)}${c.perfil ? ` · ${esc(c.perfil)}` : ''}${c.contrataciones > 1 ? ` · ${c.contrataciones} Órdenes de Servicio` : ''}</small></td>
-        <td class="num">${esc(c.numero || '—')} <span class="badge ${cOS}">${tOS}</span>${verMonto && c.monto !== null && c.monto !== undefined ? `<small>${soles(c.monto)} · ${c.plazo_dias || '—'} días</small>` : `<small>${c.plazo_dias ? `${c.plazo_dias} días` : ''}</small>`}</td>
-        <td class="num">${c.fecha_notificacion ? `${ff(c.fecha_notificacion)} <small>por ${esc(MEDIO[c.medio_notificacion] || '—')}</small>` : sinNotificar && puedeEd ? `<button class="btn peq prim" type="button" data-notificar="${c.consultor_id}">Registrar notificación</button>` : '<span class="mut2">Pendiente</span>'}</td>
-        <td class="num">${sinNotificar && !c.fin_vigencia ? '<span class="mut2">Corre desde la notificación</span>' : `${fecha(c.fin_vigencia)}${dias} <span class="badge ${cl}">${tx}</span>`}</td>
-        <td class="desc">${pr ? `${pr.numero}. ${esc(pr.nombre)}<small>${pr.fecha_limite ? ff(pr.fecha_limite) : 'Sin fecha'} <span class="badge ${cE}">${tE}</span></small>` : c.entregables && c.entregables.pendientes ? `<span class="mut2">${c.entregables.pendientes} entregable(s): las fechas se fijan al notificar</span>` : c.entregables && c.entregables.total ? '<span class="mut2">Todos conformes</span>' : '<span class="mut2">—</span>'}</td>
-        <td style="white-space:nowrap">${c.contrato_id ? `${pdf(c, 'tdr', c.tdr, 'TDR')} ${pdf(c, 'documento', c.documento, 'OS')}${c.notificacion && c.notificacion.existe ? ` <button class="btn peq" type="button" data-pdf="/api/documentos/${c.notificacion.documento_id}/archivo" data-titulo="Notificación · ${esc(c.nombres)}">Notificación</button>` : ''}` : '—'}</td>
-        <td style="white-space:nowrap">${c.contrato_id ? `<button class="btn peq" type="button" data-entregables="${c.consultor_id}">Entregables</button>` : ''}
-          ${puedeEd && c.estado_contratacion === 'EN_EJECUCION' ? `<button class="btn peq" type="button" data-ampliar="${c.consultor_id}">Ampliar plazo</button> <button class="btn peq" type="button" data-notificar="${c.consultor_id}" title="Corregir la fecha de notificación (exige motivo)">Corregir notificación</button>` : ''}
-          ${puedeEd && c.estado_contratacion === 'EN_EJECUCION' ? `<button class="btn peq" type="button" data-resolver="${c.consultor_id}" title="Terminar la OS antes de completar sus entregables">Resolver</button>` : ''}
-          ${puedeEd && sinNotificar ? `<button class="btn peq" type="button" data-anular="${c.consultor_id}" title="Anular la OS que no llegó a notificarse">Anular</button>` : ''}
-          ${puedeEd && !sinNotificar ? `<button class="btn peq" type="button" data-nueva-os="${c.consultor_id}">Nueva OS</button>` : ''}</td></tr>`;
-    }).join('')}</tbody></table>`;
+    : `<span class="badge b-ambar" title="${esc(etiqueta)} pendiente">${esc(etiqueta)}: falta</span>${puedeEd ? `<button class="btn peq" type="button" data-subir="${c.contrato_id}|${ruta}">Adjuntar</button>` : ''}`);
+  return lista.map((c, n) => {
+    const [cOS, tOS] = ESTADO_OS[c.estado_contratacion] || ESTADO_OS.REGISTRADA;
+    const [cl, tx] = SITUACION[c.situacion] || SITUACION.SIN_PERIODO;
+    const dias = c.dias_restantes === null || c.dias_restantes === undefined ? '' : c.dias_restantes < 0 ? `Venció hace ${-c.dias_restantes} d` : `Quedan ${c.dias_restantes} d`;
+    const pr = c.entregables && c.entregables.proximo;
+    const [cE, tE] = pr ? SEMAFORO_ENT[pr.semaforo] || SEMAFORO_ENT.GRIS : SEMAFORO_ENT.GRIS;
+    const sinNotificar = c.estado_contratacion === 'REGISTRADA';
+    const enEjecucion = c.estado_contratacion === 'EN_EJECUCION';
+    const docs = c.contrato_id ? `${pdf(c, 'tdr', c.tdr, 'TDR')}${pdf(c, 'documento', c.documento, 'OS')}${c.notificacion && c.notificacion.existe ? `<button class="btn peq" type="button" data-pdf="/api/documentos/${c.notificacion.documento_id}/archivo" data-titulo="Notificación · ${esc(c.nombres)}">Notificación</button>` : ''}` : '';
+    const acciones = [
+      c.contrato_id ? `<button class="btn peq" type="button" data-entregables="${c.consultor_id}">Entregables</button>` : '',
+      puedeEd && sinNotificar ? `<button class="btn peq prim" type="button" data-notificar="${c.consultor_id}">Registrar notificación</button>` : '',
+      puedeEd && enEjecucion ? `<button class="btn peq" type="button" data-ampliar="${c.consultor_id}">Ampliar plazo</button><button class="btn peq" type="button" data-notificar="${c.consultor_id}" title="Corregir la fecha de notificación (exige motivo)">Corregir notificación</button><button class="btn peq" type="button" data-resolver="${c.consultor_id}" title="Terminar la OS antes de completar sus entregables">Resolver</button>` : '',
+      puedeEd && sinNotificar ? `<button class="btn peq" type="button" data-anular="${c.consultor_id}" title="Anular la OS que no llegó a notificarse">Anular</button>` : '',
+      puedeEd && !sinNotificar ? `<button class="btn peq" type="button" data-nueva-os="${c.consultor_id}" title="Otra Orden de Servicio para este profesional">Nueva OS</button>` : '',
+    ].join('');
+    const entregable = pr
+      ? `<b class="pos-fecha">${pr.fecha_limite ? ff(pr.fecha_limite) : 'Sin fecha'}</b> <span class="badge ${cE}">${tE}</span><small>${pr.numero}. ${esc(nombreEntregable(pr.nombre))}</small>`
+      : c.entregables && c.entregables.pendientes ? `<span class="mut2">${c.entregables.pendientes} entregable(s): la fecha se calcula al registrar la notificación</span>`
+        : c.entregables && c.entregables.total ? '<span class="mut2">Todos conformes</span>' : '<span class="mut2">—</span>';
+    return `<article class="tarjeta pos" data-consultor="${c.consultor_id}">
+      <div class="cab"><h2>${esc(c.nombres)} - ${esc(p.nombre || p.codigo)} (${esc(p.codigo)})</h2>${n === 0 && nueva ? `<div class="acciones">${nueva}</div>` : ''}</div>
+      ${docs || acciones ? `<div class="pos-acc">${docs ? `<div class="acciones" role="group" aria-label="Documentos">${docs}</div>` : ''}${acciones ? `<div class="acciones" role="group" aria-label="Acciones">${acciones}</div>` : ''}</div>` : ''}
+      <dl class="pos-datos">
+        <div><dt>Profesional</dt><dd>${c.perfil ? esc(c.perfil) : '<span class="mut2">Sin perfil registrado</span>'}</dd></div>
+        <div><dt>Orden de Servicio</dt><dd>N.° ${esc(c.numero || '—')} <span class="badge ${cOS}">${tOS}</span><small>${verMonto && c.monto !== null && c.monto !== undefined ? `${soles(c.monto)} · ` : ''}${c.plazo_dias ? `${c.plazo_dias} días calendario` : ''}${c.contrataciones > 1 ? ` · ${c.contrataciones} Órdenes de Servicio` : ''}</small></dd></div>
+        <div><dt>Notificación</dt><dd>${c.fecha_notificacion ? `${ff(c.fecha_notificacion)}<small>por ${esc(MEDIO[c.medio_notificacion] || '—')}</small>` : '<span class="mut2">Pendiente</span>'}</dd></div>
+        <div><dt>Vence</dt><dd>${sinNotificar && !c.fin_vigencia ? '<span class="mut2">Corre desde la notificación</span>' : `${fecha(c.fin_vigencia)} <span class="badge ${cl}">${tx}</span>${dias ? `<small>${dias}</small>` : ''}`}</dd></div>
+        <div><dt>Próximo entregable</dt><dd>${entregable}</dd></div>
+      </dl>${presentadosOS(c)}</article>`;
+  }).join('');
 }
 
 /** Profesionales del proyecto con el vencimiento de su Orden de Servicio / contrato y sus documentos. */
 function tabla(p, lista) {
-  if (!lista.length) return `<div class="vacio">Aún no hay profesionales registrados en este proyecto${p.modalidad === 'ORDEN_SERVICIO' ? ': use «Registrar Orden de Servicio»' : ''}.</div>`;
-  if (p.modalidad === 'ORDEN_SERVICIO') return tablaOS(p, lista);
+  if (p.modalidad === 'ORDEN_SERVICIO') return tarjetasOS(p, lista);
+  if (!lista.length) return '<div class="vacio">Aún no hay profesionales registrados en este proyecto.</div>';
   const os = p.con_orden_servicio === 1;
   const puedeEd = puedeProyecto(p.proyecto_id);
   const celdaPdf = (c, ruta, info, etiqueta) => (info.existe
@@ -100,12 +137,17 @@ function tabla(p, lista) {
     }).join('')}</tbody></table>`;
 }
 
-/** Dibuja en `cont` los profesionales del proyecto `p` (sección Plazos - Vencimientos) y conecta sus acciones. */
+/**
+ * Dibuja en `cont` los profesionales del proyecto `p` (sección Plazos - Vencimientos) y conecta sus acciones. En la
+ * modalidad Orden de Servicio `cont` recibe las tarjetas completas (una por profesional); en las demás, la tabla.
+ */
 export async function montarProfesionales(cont, p) {
   const pintar = async () => {
     let profesionales;
     try { profesionales = await api('GET', `/proyectos/${p.proyecto_id}/profesionales`); } catch (err) { cont.innerHTML = `<div class="vacio">${esc(err.message)}</div>`; return; }
     cont.innerHTML = tabla(p, profesionales);
+    const bNueva = cont.querySelector('#b-nueva-os');
+    if (bNueva) bNueva.onclick = async () => { if (await registrarOrdenServicio(p)) { if (window.sgfRefrescar) window.sgfRefrescar(); else pintar(); } };
     cont.querySelectorAll('[data-pdf]').forEach((b) => { b.onclick = () => verPdf(b.dataset.pdf, b.dataset.titulo); });
     cont.querySelectorAll('[data-subir]').forEach((b) => {
       b.onclick = () => {

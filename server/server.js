@@ -22,6 +22,8 @@ const { crearAlmacen } = require('./documentos/almacen');
 const permisos = require('./permisos');
 const modalidades = require('./modalidades');
 const { crearContrataciones } = require('./contrataciones');
+const { crearProyectos } = require('./proyectos');
+const { crearLectorEntregables } = require('./documentos/entregable');
 const { crearSupervision } = require('./supervision');
 const { construirPortafolio, totalesMonto } = require('./motor/portafolio');
 const { crearCierre } = require('./cierre');
@@ -128,6 +130,8 @@ async function crearApp() {
     .then((r) => { if (!res.headersSent) res.json(r ?? { ok: true }); }).catch(next);
   const contrataciones = crearContrataciones({ servicio, repo, almacen, leerDocumento: leerArchivo, extraerTdrConIA: (a) => agente.extraerDocumento({ ...a, modo: 'tdr' }) });
   const supervision = crearSupervision({ servicio, repo, almacen, contrataciones });
+  const proyectos = crearProyectos({ servicio, almacen, contrataciones, leerDocumento: leerArchivo, extraerConIA: config.ia.claveApi ? (a, modo = 'proyecto') => agente.extraerDocumento({ ...a, modo }) : null });
+  const lectorEntregables = crearLectorEntregables({ servicio, contrataciones, leerDocumento: leerArchivo, extraerConIA: config.ia.claveApi ? (a, modo) => agente.extraerDocumento({ ...a, modo }) : null });
   const cierre = crearCierre({ servicio, repo, almacen, contrataciones });
   // El monto de la Orden de Servicio es confidencial (D4): solo el Administrador y el equipo del proyecto lo ven
   const verMonto = async (req, consultorId) => permisos.puedeVerConfidencial(req.usuario, consultorId ? await proyectoDeConsultor(consultorId) : null);
@@ -290,6 +294,12 @@ async function crearApp() {
   }));
 
   // ------------------------------------------------------------ consultas
+  // Entregables de la OS vigente (para la tarjeta del profesional y la línea de vigencia): sin montos
+  const listaEntregables = (it) => it.entregables.filter((x) => !it.contrato || x.contrato_id === it.contrato.contrato_id).map((x) => ({
+    numero: x.numero, nombre: x.nombre, estado: x.estado, fecha_limite: x.fecha_limite || null, fecha_presentacion: x.fecha_presentacion || null,
+    fecha_subsanacion: x.fecha_subsanacion || null, fecha_conformidad: x.fecha_conformidad || null, porcentaje_pago: x.porcentaje_pago ?? null,
+    semaforo: x.semaforo, vencido: !!x.vencido, dias_atraso: x.dias_atraso ?? null,
+  }));
   app.get('/api/estado', seg.requiere('LECTOR'), h(async (req) => {
     const e = await servicio.estado({ corte: req.query.corte, proyecto_id: req.query.proyecto_id });
     return {
@@ -307,7 +317,7 @@ async function crearApp() {
         atrasadas: it.pronostico ? Object.values(it.pronostico.actividades).filter((a) => ['ATRASADA', 'SIN_INICIAR_VENCIDA'].includes(a.situacion)).length : 0,
         alertas: e.alertas.filter((a) => a.consultor_id === it.consultor.consultor_id).length,
         estado_contratacion: it.contrato ? it.contrato.estado_contratacion || null : null,
-        entregables: { total: it.entregables.length, vencidos: it.entregables.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables },
+        entregables: { total: it.entregables.length, vencidos: it.entregables.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables, lista: listaEntregables(it) },
       })),
     };
   }));
@@ -482,8 +492,11 @@ async function crearApp() {
     return vivos.map((p) => {
       const items = e.consultores.filter((it) => it.consultor.proyecto_id === p.proyecto_id);
       const equipo = equipos[p.proyecto_id].map(({ miembro_id, usuario_id, nombre, es_responsable }) => ({ miembro_id, usuario_id, nombre, es_responsable }));
+      // Documentos del proyecto (TDR y Orden de Servicio, la versión vigente); la OS es confidencial (D4)
+      const documentos = ['TDR', 'ORDEN_SERVICIO'].map((t) => almacen.vigente(t, 'proyecto', p.proyecto_id)).filter(Boolean)
+        .map((f) => (f.confidencial && !permisos.puedeVerConfidencial(req.usuario, p.proyecto_id) ? { tipo: f.tipo, oculto: true } : { documento_id: f.documento_id, tipo: f.tipo, nombre_original: f.nombre_original, version: f.version, subido_en: f.subido_en }));
       return {
-        ...p, profesionales: items.length, activos: items.filter((it) => it.consultor.estado === 'ACTIVO').length, planes_aprobados: items.filter((it) => it.plan && it.plan.estado === 'APROBADO').length,
+        ...p, documentos, profesionales: items.length, activos: items.filter((it) => it.consultor.estado === 'ACTIVO').length, planes_aprobados: items.filter((it) => it.plan && it.plan.estado === 'APROBADO').length,
         equipo, responsable: (equipo.find((m) => m.es_responsable) || {}).nombre || null, escribe: req.usuario.rol !== 'PROFESIONAL' && permisos.puedeEscribirProyecto(alcance, p.proyecto_id),
       };
     });
@@ -547,7 +560,8 @@ async function crearApp() {
         documento: k ? contratosPdf.info(k.contrato_id) : { existe: false }, tdr: k ? tdrPdf.info(k.contrato_id) : { existe: false },
         notificacion: notif ? { existe: true, documento_id: notif.documento_id } : { existe: false },
         entregables: { total: it.entregables.filter((x) => !k || x.contrato_id === k.contrato_id).length, pendientes: pendientes.length, vencidos: pendientes.filter((x) => x.vencido).length, semaforo: it.semaforo_entregables,
-          proximo: pendientes.filter((x) => x.fecha_limite).sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)).map((x) => ({ numero: x.numero, nombre: x.nombre, fecha_limite: x.fecha_limite, semaforo: x.semaforo, motivo: x.motivo }))[0] || null },
+          lista: listaEntregables(it),
+          proximo: pendientes.filter((x) => x.fecha_limite && ['PENDIENTE', 'OBSERVADO'].includes(x.estado)).sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)).map((x) => ({ numero: x.numero, nombre: x.nombre, fecha_limite: x.fecha_limite, semaforo: x.semaforo, motivo: x.motivo }))[0] || null },
       };
     });
   }));
@@ -558,6 +572,12 @@ async function crearApp() {
   app.post('/api/documentos/temporales', seg.requiere('EDITOR'), express.raw({ type: () => true, limit: 15 * 1024 * 1024 }), h((req) => contrataciones.subirTemporal(req.body, nombreDe(req), ctx(req), { evidencia: req.query.formato === 'evidencia' })));
   // Lectura del TDR con IA para precargar el registro (no escribe nada; el usuario revisa y confirma)
   app.post('/api/contrataciones/leer-tdr', seg.requiere('EDITOR'), h((req) => contrataciones.leerTdr((req.body || {}).documento, ctx(req))));
+  // Lee la OS y el TDR (los del proyecto o PDF temporales) y propone los datos del registro; no escribe. La OS es
+  // confidencial: solo el Administrador y el equipo del proyecto la leen (y reciben el monto que declara).
+  app.post('/api/proyectos/:id/contrataciones/leer-documentos', seg.requiere('EDITOR'), h((req) => {
+    if (!permisos.puedeVerConfidencial(req.usuario, Number(req.params.id))) throw Object.assign(new Error('Solo el Administrador y el equipo del proyecto leen su Orden de Servicio'), { estado: 403 });
+    return proyectos.leerOrdenServicio(req.params.id, (req.body || {}).documentos, ctx(req));
+  }));
   app.post('/api/proyectos/:id/contrataciones', seg.requiere('EDITOR'), h(async (req) => {
     const r = await contrataciones.registrar(req.params.id, req.body || {}, ctx(req));
     return { ...r, contrato: { ...r.contrato } };
@@ -629,6 +649,8 @@ async function crearApp() {
   // ------------------------------------------------------------ supervisión diaria y entregables (Etapa 3, db/18)
   app.get('/api/proyectos/:id/partes', seg.requiere('EDITOR'), h((req) => supervision.listarPartes(req.params.id, { consultor_id: req.query.consultor_id, desde: req.query.desde, hasta: req.query.hasta, limite: req.query.limite })));
   app.post('/api/proyectos/:id/partes', seg.requiere('EDITOR'), h((req) => supervision.registrarParte(req.params.id, req.body || {}, ctx(req))));
+  // Lee el documento del entregable (temporal) y propone la fecha de presentación y la observación; no escribe
+  app.post('/api/entregables/:id/leer-documento', seg.requiere('EDITOR'), h((req) => lectorEntregables.leer(req.params.id, (req.body || {}).documento, ctx(req))));
   app.post('/api/entregables/:id/presentar', seg.requiere('EDITOR'), h((req) => supervision.presentar(req.params.id, req.body || {}, ctx(req))));
   app.post('/api/entregables/:id/observar', seg.requiere('EDITOR'), h((req) => supervision.observar(req.params.id, req.body || {}, ctx(req))));
   app.post('/api/entregables/:id/conformidad', seg.requiere('EDITOR'), h((req) => supervision.conformidad(req.params.id, req.body || {}, ctx(req))));
@@ -666,9 +688,14 @@ async function crearApp() {
   }
   app.post('/api/proyectos/:id/profesionales/:cid/renovar', seg.requiere('EDITOR'), h((req) => servicio.ampliarOrdenServicio(req.params.cid, req.body, ctx(req))));
   app.post('/api/proyectos/:id/profesionales', seg.requiere('EDITOR'), h((req) => servicio.registrarProfesional({ ...(req.body || {}), proyecto_id: req.params.id }, ctx(req))));
+  // Proyectos (solo la Dirección OTI): el periodo se calcula con inicio y plazo; la OS y el TDR quedan como documentos del proyecto
+  app.post('/api/proyectos/leer-documentos', seg.requiere('ADMIN'), h((req) => proyectos.leerDocumentos((req.body || {}).documentos, ctx(req))));
+  app.post('/api/proyectos', seg.requiere('ADMIN'), h((req) => proyectos.registrar(req.body, ctx(req))));
+  app.patch('/api/proyectos/:id', seg.requiere('ADMIN'), h((req) => proyectos.actualizar(req.params.id, req.body, ctx(req))));
   const RUTAS_ENTIDAD = { proyectos: 'proyecto', adendas: 'adenda', contratos: 'contrato', planes: 'plan_trabajo', 'linea-base': 'linea_base_entregable', 'controles-cambio': 'control_cambio', consultores: 'consultor' };
   for (const [ruta, entidad] of Object.entries(RUTAS_ENTIDAD)) {
     const nivel = entidad === 'proyecto' ? 'ADMIN' : 'EDITOR'; // los proyectos los crea y modifica solo la Dirección OTI (Administrador)
+    if (entidad === 'proyecto') continue; // rutas propias, arriba
     app.patch(`/api/${ruta}/:id`, seg.requiere(nivel), h((req) => servicio.actualizarEntidad(entidad, req.params.id, req.body, ctx(req))));
     if (entidad !== 'consultor' && entidad !== 'linea_base_entregable' && entidad !== 'contrato') {
       app.post(`/api/${ruta}`, seg.requiere(nivel), h((req) => servicio.crearEntidad(entidad, req.body, ctx(req))));

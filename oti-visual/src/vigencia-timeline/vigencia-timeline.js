@@ -7,7 +7,7 @@
  *   vt.update({ data: nuevos });  vt.setModo('adenda');  vt.destroy();
  */
 import {
-  computeRows, groupRows, summarize, textoBrecha, filasTooltip, STATUS_META,
+  computeRows, groupRows, summarize, textoBrecha, filasTooltip, filasEntregables, STATUS_META,
   fmtCorta, fmtLarga, fromDay, nombreMes,
 } from './compute.js';
 
@@ -49,6 +49,7 @@ export function renderVigenciaTimeline(container, options) {
     mostrarTerminoProbable: true, // false: sin la marca del término probable (leyenda, gráfico, eje y tabla)
     tramoSinCobertura: true, // false: sin el tramo rayado entre el fin de vigencia y el término probable
     anchoEtiqueta: 76, // ancho (unidades del gráfico) de la columna de nombres de fila; subir si se usan etiquetas largas
+    mostrarEntregables: false, // true: marca de cada entregable en su fecha límite (presentado / pendiente / vencido) y barra de avance
     ...options,
   };
 
@@ -72,6 +73,10 @@ export function renderVigenciaTimeline(container, options) {
       <span class="vt-leg-hist"><i class="vt-sw vt-sw-hist"></i>Adenda concluida</span>
       <span class="vt-leg-hueco"><i class="vt-sw vt-sw-hueco"></i>Días sin cobertura (historial)</span>
       <span class="vt-leg-prob"><i class="vt-sw vt-sw-mk"></i>Término probable del plan</span>
+      <span class="vt-leg-ent"><i class="vt-sw vt-sw-avance"></i>Avance por entregables presentados</span>
+      <span class="vt-leg-ent"><i class="vt-sw vt-sw-ent-ok"></i>Entregable presentado</span>
+      <span class="vt-leg-ent"><i class="vt-sw vt-sw-ent-pend"></i>Entregable por presentar</span>
+      <span class="vt-leg-ent"><i class="vt-sw vt-sw-ent-venc"></i>Entregable vencido sin presentar</span>
       <span><i class="vt-sw vt-sw-today"></i>Fecha de corte</span>
     </div>
     <div class="vt-scroll"><svg class="vt-svg" role="img" aria-labelledby="${uid}-t ${uid}-s"></svg></div>
@@ -109,6 +114,7 @@ export function renderVigenciaTimeline(container, options) {
     container.querySelector('.vt-leg-hist').style.display = opts.mostrarHistorial ? '' : 'none';
     container.querySelector('.vt-leg-hueco').style.display = opts.mostrarHistorial ? '' : 'none';
     container.querySelector('.vt-leg-gap').style.display = opts.tramoSinCobertura === false ? 'none' : '';
+    container.querySelectorAll('.vt-leg-ent').forEach((n) => { n.style.display = opts.mostrarEntregables ? '' : 'none'; });
     container.querySelector('.vt-foot-nota').style.visibility = opts.mostrarBrecha === false ? 'hidden' : '';
     $('.vt-title').textContent = opts.titulo;
     $('.vt-sub').textContent = `Corte al ${fmtLarga(corteDay)} · ${sum.total} ${opts.etiquetaFila} · ${opts.mostrarBrecha === false ? '' : 'brecha calculada '}${modo === 'firmada' ? 'solo con adendas firmadas' : 'asumiendo que se firman las adendas en trámite'}`;
@@ -143,7 +149,8 @@ export function renderVigenciaTimeline(container, options) {
 
     const conHist = !!opts.mostrarHistorial;
     const days = rows.flatMap((r) => [r.ini, r.fin, r.ad, opts.mostrarTerminoProbable === false ? null : r.prob,
-      ...(conHist ? [...r.hist.flatMap((h) => [h.ini, h.fin]), ...r.brechas.flatMap((t) => [t.ini, t.fin])] : [])]).filter((v) => v != null).concat(corte);
+      ...(conHist ? [...r.hist.flatMap((h) => [h.ini, h.fin]), ...r.brechas.flatMap((t) => [t.ini, t.fin])] : []),
+      ...(opts.mostrarEntregables ? r.ents.map((x) => x.dia) : [])]).filter((v) => v != null).concat(corte);
     const desde = conHist && opts.ejeDesde ? toCorte(opts.ejeDesde) : null;
     const x0 = desde != null ? Math.min(desde, Math.min(...days)) : Math.min(...days) - 3, x1 = Math.max(...days) + 4;
     const sx = (v) => L + ((v - x0) / (x1 - x0)) * (R - L);
@@ -212,6 +219,14 @@ export function renderVigenciaTimeline(container, options) {
             style: `fill:var(--pending-fill);stroke:var(--pending);stroke-width:1.25${modo === 'adenda' ? '' : ';stroke-dasharray:4 3'}` }, sg);
         }
         svgEl('rect', { x: sx(r.ini), y: by, width: Math.max(sx(r.fin) - sx(r.ini), 2), height: bh, rx: 4, style: 'fill:var(--bar-fill);stroke:var(--bar-stroke);stroke-width:1.25' }, sg);
+        if (opts.mostrarEntregables && r.ents.length) {
+          if (r.avanceDia != null && r.avanceDia > r.ini) svgEl('rect', { x: sx(r.ini), y: by + bh + 2, width: Math.max(sx(r.avanceDia) - sx(r.ini), 3), height: 4, rx: 2, style: 'fill:var(--progress)' }, sg);
+          for (const x of r.ents) {
+            const est = x.presentado ? 'fill:var(--progress);stroke:var(--surface);stroke-width:1.5' : x.vencido ? 'fill:var(--surface);stroke:var(--risk);stroke-width:2' : 'fill:var(--surface);stroke:var(--ink-muted);stroke-width:1.5';
+            svgEl('circle', { cx: sx(x.dia), cy, r: 7.5, style: est }, sg);
+            svgEl('text', { x: sx(x.dia), y: cy + 3.5, 'text-anchor': 'middle', class: 'vt-t-ent', style: `fill:${x.presentado ? 'var(--on-brand)' : x.vencido ? 'var(--risk-ink)' : 'var(--ink)'}` }, sg).textContent = x.numero;
+          }
+        }
         if (opts.tramoSinCobertura !== false && r.prob != null && r.prob > r.end) {
           svgEl('rect', { x: sx(r.end), y: by - 2, width: Math.max(sx(r.prob) - sx(r.end), 4), height: bh + 4, rx: 3, style: `fill:url(#${uid}-hatch);stroke:var(--risk);stroke-width:1.25` }, sg);
         }
@@ -230,7 +245,7 @@ export function renderVigenciaTimeline(container, options) {
         const show = (cx, cyy) => {
           const breve = opts.tooltip === 'vigencia'; // solo vigencia (y adenda si la hay): sin brecha ni término probable
           tip.innerHTML = `<b>${esc(r.id)}</b>${r.descripcion ? ` · ${esc(r.descripcion)}` : ''}${breve ? '' : `<br><span style="color:${S.ink};font-weight:600">${esc(textoBrecha(r.brecha))}</span>`}<dl>
-            ${filasTooltip(r, { modo, detalle: opts.tooltip, historial: conHist }).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('\n            ')}
+            ${[...filasTooltip(r, { modo, detalle: opts.tooltip, historial: conHist }), ...(opts.mostrarEntregables ? filasEntregables(r) : [])].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('\n            ')}
           </dl>`;
           const p = 14, w = tip.offsetWidth, h = tip.offsetHeight;
           let lx = cx + p, ly = cyy + p;

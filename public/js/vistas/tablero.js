@@ -17,7 +17,8 @@ export async function vistaTablero(el) {
   // Título del proyecto elegido (GF2026 conserva el suyo)
   const proyectos = estado.proyectos && estado.proyectos.length ? estado.proyectos : await cargarProyectos();
   const proyAct = (proyectos || []).find((x) => x.proyecto_id === estado.proyecto_id);
-  if (proyAct && proyAct.codigo !== 'GF2026') titulo(`${proyAct.codigo} · ${proyAct.con_adendas ? 'ADENDAS - PLAZOS' : 'PLAZOS - VENCIMIENTOS'}`, proyAct.nombre);
+  // título: el nombre del proyecto; debajo, su código y la sección (por decisión del usuario, 26/11/2026)
+  if (proyAct && proyAct.codigo !== 'GF2026') titulo(proyAct.nombre || proyAct.codigo, esc(`${proyAct.codigo} · ${proyAct.con_adendas ? 'ADENDAS - PLAZOS' : 'PLAZOS - VENCIMIENTOS'}`));
   else titulo(TITULO, '');
   const k = e.indicadores;
 
@@ -52,6 +53,7 @@ export async function vistaTablero(el) {
     tramoSinCobertura: false, // sin el tramo rojo rayado
     anchoEtiqueta: 170, // espacio para "nombre y primer apellido"
     tooltip: 'vigencia', // al pasar el puntero: solo inicio y fin de vigencia (y adenda con su plazo de firma, si la hay)
+    mostrarEntregables: !!(proyAct && proyAct.modalidad === 'ORDEN_SERVICIO'), // marcas de los entregables y avance por los presentados
     onRowClick: (f) => { if (consultorPorId[f.id]) location.hash = `#/consultor/${consultorPorId[f.id]}`; },
   });
   el.querySelectorAll('[data-historial]').forEach((b) => {
@@ -103,7 +105,11 @@ export async function vistaTablero(el) {
   if (estado.proyecto_id) {
     const lista = estado.proyectos && estado.proyectos.length ? estado.proyectos : await cargarProyectos();
     const proy = lista.find((x) => x.proyecto_id === estado.proyecto_id);
-    if (proy && proy.con_profesionales) {
+    if (proy && proy.con_profesionales && proy.modalidad === 'ORDEN_SERVICIO') {
+      // una tarjeta por profesional, con su título, sus botones y la fecha del próximo entregable
+      el.insertAdjacentHTML('beforeend', '<div class="pos-lista" id="prof-proy"><div class="tarjeta"><div class="cuerpo"><div class="vacio">Cargando…</div></div></div></div>');
+      await montarProfesionales(el.querySelector('#prof-proy'), proy);
+    } else if (proy && proy.con_profesionales) {
       el.insertAdjacentHTML('beforeend', `<div class="tarjeta" id="prof-proy"><div class="cab"><h2>Profesionales del proyecto ${esc(proy.codigo)}${proy.con_orden_servicio ? ' · vencimiento de la Orden de Servicio' : ''}</h2>${proy.modalidad === 'ORDEN_SERVICIO' && puedeProyecto(proy.proyecto_id) ? '<div class="acciones"><button type="button" class="btn peq prim" id="b-nueva-os">Registrar Orden de Servicio</button></div>' : ''}</div><div class="cuerpo sin tabla-env" id="prof-proy-cuerpo"><div class="vacio">Cargando…</div></div></div>`);
       const bOS = el.querySelector('#b-nueva-os');
       if (bOS) bOS.onclick = async () => { if (await registrarOrdenServicio(proy)) window.sgfRefrescar(); };

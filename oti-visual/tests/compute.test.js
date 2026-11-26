@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { computeRows, groupRows, summarize, textoBrecha, toDay, filasTooltip } from '../src/vigencia-timeline/compute.js';
+import { computeRows, groupRows, summarize, textoBrecha, toDay, filasTooltip, filasEntregables } from '../src/vigencia-timeline/compute.js';
 
 const { corte, data } = JSON.parse(readFileSync(new URL('../demo/datos-ejemplo.json', import.meta.url)));
 const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]));
@@ -105,4 +105,21 @@ test('historial: computeRows convierte los tramos y filasTooltip los describe (s
   assert.equal(filasTooltip(r, { detalle: 'vigencia' }).length, 2);
   // sin historial en los datos, las filas conservan su forma
   assert.deepEqual(computeRows([{ id: 'Y', inicio: '2026-11-01', fin: '2026-11-30' }], { corte: '2026-11-04' })[0].hist, []);
+});
+
+test('entregables: el avance llega hasta el último presentado sin pendientes antes; el tooltip los detalla', () => {
+  const fila = { id: 'JJA', inicio: '2026-08-26', fin: '2026-12-23', avance: 25, entregables: [
+    { numero: 2, fechaLimite: '2026-10-24', presentado: false, vencido: true },
+    { numero: 1, fechaLimite: '2026-09-24', presentado: true, fechaPresentacion: '2026-09-23' },
+    { numero: 3, fechaLimite: '2026-11-23', presentado: true },
+  ] };
+  const [r] = computeRows([fila], { corte: '2026-11-26' });
+  assert.deepEqual(r.ents.map((x) => x.numero), [1, 2, 3]);
+  assert.equal(r.avanceDia, toDay('2026-09-24'), 'el 3 está presentado, pero el 2 no: el avance se corta en el 1');
+  const filas = filasEntregables(r);
+  assert.deepEqual(filas[0], ['Entregables presentados', '2 de 3 (25 %)']);
+  assert.deepEqual(filas[1], ['Entregable 1', '24/09/2026 · presentado 23/09/2026']);
+  assert.deepEqual(filas[2], ['Entregable 2', '24/10/2026 · vencido sin presentar']);
+  const [sin] = computeRows([{ id: 'X', inicio: '2026-08-26', fin: '2026-12-23' }], { corte: '2026-11-26' });
+  assert.deepEqual([sin.ents, sin.avanceDia, filasEntregables(sin)], [[], null, []]);
 });

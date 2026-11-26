@@ -34,7 +34,7 @@ Usuarios: Director de TI (perfil **ADMIN**, «Dirección OTI»), Jefes de Proyec
 | **Solo en el equipo local, sin commit** | Todo lo de «Proyectos»: `db/12`, `db/13`, menú lateral por proyecto, características del proyecto, Orden de Servicio y TDR, registro del plan desde documento, nueva denominación, este handoff, `PLAN_DE_MEJORAS.md` y la **Etapa 1** (24/11/2026): `db/14` almacén documental, `db/15` equipo por proyecto y permisos, transacciones compuestas, migración de documentos. |
 
 - Repositorio: `https://github.com/usuarioiaoti01-dot/seguimiento-bps-gestiona-forestal` (cuenta institucional de la OTI; público por decisión del usuario). 16 commits en `main`.
-- Pruebas: **139** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
+- Pruebas: **152** (`npm test`), todas pasando, y **4 de integración con SQL Server real** (`npm run test:sqlserver`, base local en Docker; pasan las 4 el 25/11/2026). `db/16` se instala ahora en una base limpia: su lote 10 (modalidad NOT NULL) fallaba por el historial temporal; en producción también falló y la columna quedó NULL-able, que es lo que el script deja ahora. Código ≈ 7 000 líneas de JS (servidor + cliente).
 - Modo de trabajo acordado: el usuario prueba en `localhost:3080`; **solo se sube a GitHub cuando dice «sube los cambios al gh»**; no se pide aprobación de un plan antes de ejecutar (prevalece sobre `CLAUDE.md` §5). Los cambios llegan a producción con `git pull` + reinicio del servicio.
 
 ---
@@ -268,6 +268,8 @@ Regla: todo cambio de estructura = nuevo script `NN_descripcion.sql` + actualiza
 ---
 
 ## 16. Pendientes inmediatos (en este orden)
+
+> **Actualización de producción a la rama v.02 actual:** por decisión del usuario (25/11/2026) se hace empezando de cero, sin proyectos: `docs/DESPLIEGUE_v02.md`, parte F (respaldo, `db/mantenimiento/reinicio_sin_proyectos.sql`, archivo de los PDF).
 
 > La hoja de ruta de la siguiente fase (etapas 0–5) está en `PLAN_DE_MEJORAS.md`; los puntos 1–3 de abajo son su Etapa 0.
 

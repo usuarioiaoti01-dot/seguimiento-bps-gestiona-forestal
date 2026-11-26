@@ -366,12 +366,14 @@ function interpretarAdendas(filas, datos, { clave = null } = {}) {
   return { cambios, rechazadas, sinCambios: r.sinCambios };
 }
 
-/** Quita lo que no debe llegar al modelo de IA (regla 8): DNI, teléfonos y correos. */
+/** Quita lo que no debe llegar al modelo de IA (regla 8): DNI, RUC de persona natural, teléfonos y correos. */
 function redactarPersonales(texto) {
   let n = 0;
   const marca = () => { n += 1; return '[DATO PERSONAL OMITIDO]'; };
   const limpio = String(texto)
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, marca)
+    // RUC de persona natural (10/15/17 + DNI): contiene el DNI
+    .replace(/(?<!\d|[/-])(?:10|15|17)\d{9}(?!\d|[/-])/g, marca)
     // un punto final («DNI 45678912.») no protege al número; sí lo protegen dígitos, «/» y «-» pegados (fechas, códigos) y «.» entre dígitos
     .replace(/(?<!\d|[/-]|\d\.)(\+?51[\s-]?)?9\d{2}[\s-]?\d{3}[\s-]?\d{3}(?!\d|[/-]|\.\d)/g, marca)
     .replace(/(?<!\d|[/-]|\d\.)\d{8}(?!\d|[/-]|\.\d)/g, marca);

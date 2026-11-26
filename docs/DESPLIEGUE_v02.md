@@ -167,6 +167,55 @@ Opcional y desactivado por defecto; la clave local sigue funcionando para todas 
 
 ---
 
+## F. Actualizar y empezar de cero (sin ningún proyecto)
+
+Decisión del usuario del 25/11/2026: al actualizar producción la aplicación queda **sin proyectos**. Se borran proyectos,
+equipos, profesionales, contratos y órdenes de servicio, adendas, entregables, planes, actividades, línea base, partes
+diarios, documentos, pronósticos, conversaciones del asistente y la bitácora. **Se conservan** las cuentas del
+Administrador y de los Jefes de Proyecto (con su clave), los parámetros y los feriados; las cuentas de Profesional quedan
+desactivadas. Lo hace `db/mantenimiento/reinicio_sin_proyectos.sql` (probado en una base de pruebas con GF2026 y
+proyectos con OS: deja todo en cero, incluido el historial temporal, y la numeración vuelve a empezar en 1). Los PDF no
+se borran: la carpeta se archiva.
+
+1. **Servidor de aplicaciones** (PowerShell como administrador, en el servidor o con `Enter-PSSession -ComputerName SERFORLIMIIS02`):
+   ```powershell
+   cd C:\apps\seguimiento-actividades; git log --oneline -1
+   Copy-Item .env .env.respaldo-reinicio
+   Stop-Service SerforiaNodeBackend
+   git pull; git log --oneline -1
+   npm ci --omit=dev
+   ```
+2. **DBA, con el servicio detenido**, en SQL Server (10.6.1.112):
+   - Respaldo completo (es la única forma de recuperar lo borrado):
+     `BACKUP DATABASE SGF_SEGUIMIENTO TO DISK = N'<carpeta de respaldos>\SGF_SEGUIMIENTO_antes_reinicio_20261125.bak' WITH COPY_ONLY, INIT, CHECKSUM;`
+   - Abrir `db/mantenimiento/reinicio_sin_proyectos.sql` (en `C:\apps\seguimiento-actividades` o en GitHub), escribir
+     `BORRAR TODOS LOS PROYECTOS` en la línea `@confirmacion` y ejecutarlo en `SGF_SEGUIMIENTO`. Corre en una sola
+     transacción. Al final muestra todas las tablas en 0 (la bitácora en 1), las cuentas por perfil y los parámetros y feriados.
+3. **Archivar los documentos** (servidor de aplicaciones). Ver dónde están; la línea muestra solo rutas:
+   ```powershell
+   Select-String -Path C:\apps\seguimiento-actividades\.env -Pattern '_DIR=|DOCUMENTOS_RAIZ='
+   ```
+   Si todas apuntan a `C:\datos\seguimiento\...`:
+   ```powershell
+   Rename-Item C:\datos\seguimiento seguimiento-archivo-20261125; New-Item -ItemType Directory C:\datos\seguimiento
+   ```
+   La aplicación vuelve a crear las subcarpetas cuando las necesita. Si alguna variable falta, esa carpeta está en
+   `C:\apps\seguimiento-actividades\data\<carpeta>`: muévala también al archivo (no toque `data\semilla.json`).
+4. **Encender y comprobar**:
+   ```powershell
+   Start-Service SerforiaNodeBackend; Get-Service SerforiaNodeBackend
+   Invoke-WebRequest http://localhost:3080/api/auth/opciones -UseBasicParsing | Select-Object StatusCode, Content
+   ```
+   Debe salir `Running` y `200`.
+5. **En el navegador** (Ctrl+F5): https://serforia.serfor.gob.pe con la cuenta de siempre. El Tablero general aparece
+   en cero y el menú sin proyectos. El primer proyecto se registra en **Administrar proyectos → Registrar proyecto** y
+   recibe el código `PRY-2026-001`; luego, en «Equipo», se asigna a los Jefes de Proyecto (sus cuentas siguen activas).
+
+**Si hubiera que volver atrás:** el DBA restaura el respaldo del paso 2, se devuelve el nombre a la carpeta archivada
+(`Rename-Item C:\datos\seguimiento-archivo-20261125 seguimiento`, después de quitar la nueva) y se reinicia el servicio.
+
+---
+
 ## Volver atrás (si hiciera falta)
 Las tablas y columnas nuevas no estorban al código anterior. Basta con volver el código a `main` y reiniciar:
 ```powershell

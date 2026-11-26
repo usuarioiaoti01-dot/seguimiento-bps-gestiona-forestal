@@ -131,7 +131,7 @@ const profesional = (extra = {}) => ({
 
 test('adaptador: convierte un profesional al contrato ContratoVigencia', () => {
   const { datos, descartados, consultorPorId } = A.adaptarVigencias([profesional()]);
-  assert.deepEqual(datos, [{ id: 'ABC', descripcion: 'Ana Campos Rojas', etiqueta: 'Ana Campos', inicio: '2026-07-01', fin: '2026-11-13', adenda: '2026-12-31', terminoProbable: '2026-12-03', historial: [], brechas: [], superposiciones: [] }]);
+  assert.deepEqual(datos, [{ id: 'ABC', descripcion: 'Ana Campos Rojas', etiqueta: 'Ana Campos', inicio: '2026-07-01', fin: '2026-11-13', adenda: '2026-12-31', terminoProbable: '2026-12-03', historial: [], brechas: [], superposiciones: [], entregables: [], avance: null }]);
   assert.deepEqual(descartados, []);
   assert.equal(consultorPorId.ABC, 7);
 });
@@ -269,4 +269,28 @@ test('con los datos reales de la semilla, el historial se grafica: 19 adendas co
   const filas = C.computeRows(r.datos, { corte: '2026-11-04', umbralAtencion: 0 });
   // cada adenda concluida termina antes del inicio de la vigencia actual
   for (const f of filas) for (const h of f.hist) assert.ok(h.fin < f.ini, `${f.id}: Adenda ${h.numero} termina antes de la vigencia actual`);
+});
+
+test('adaptador: entregables de la OS con su marca y el avance por los presentados (por % de pago o por cantidad)', () => {
+  const lista = [
+    { numero: 1, nombre: 'Diagnóstico', estado: 'CONFORME', fecha_limite: '2026-09-24', fecha_presentacion: '2026-09-23', porcentaje_pago: 30, vencido: false },
+    { numero: 2, nombre: 'Mejoras', estado: 'PENDIENTE', fecha_limite: '2026-10-24', porcentaje_pago: 30, vencido: true },
+    { numero: 3, nombre: 'QA', estado: 'OBSERVADO', fecha_limite: '2026-11-23', fecha_presentacion: '2026-11-20', porcentaje_pago: 40, vencido: false },
+    { numero: 4, nombre: 'Anulado', estado: 'ANULADO', fecha_limite: '2026-12-23', porcentaje_pago: 0 },
+  ];
+  const { datos } = A.adaptarVigencias([profesional({ entregables: { lista } })]);
+  assert.deepEqual(datos[0].entregables.map((x) => [x.numero, x.presentado, !!x.conforme, x.vencido]), [[1, true, true, false], [2, false, false, true], [3, true, false, false]]);
+  assert.equal(datos[0].avance, 70, '30 % + 40 % de pago presentados');
+  assert.equal(A.avanceEntregables(lista.map((x) => ({ ...x, porcentaje_pago: null }))), 67, 'sin % de pago: 2 de 3');
+  assert.equal(A.avanceEntregables([]), null);
+});
+
+test('adaptador: una Orden de Servicio sin plan toma como término la fecha límite de su último entregable (no «sin término probable»)', () => {
+  const lista = [{ numero: 1, estado: 'PRESENTADO', fecha_limite: '2026-09-24' }, { numero: 2, estado: 'PENDIENTE', fecha_limite: '2026-11-10' }];
+  const os = A.adaptarVigencias([profesional({ pronostico: null, estado_contratacion: 'EN_EJECUCION', entregables: { lista } })]).datos[0];
+  assert.equal(os.terminoProbable, '2026-11-10');
+  const sinEntregables = A.adaptarVigencias([profesional({ pronostico: null, estado_contratacion: 'EN_EJECUCION' })]).datos[0];
+  assert.equal(sinEntregables.terminoProbable, '2026-11-13', 'sin entregables: el fin de la OS');
+  assert.equal(A.adaptarVigencias([profesional({ pronostico: null })]).datos[0].terminoProbable, null, 'contrato con adendas sin plan: sigue sin término');
+  assert.equal(A.adaptarVigencias([profesional({ estado_contratacion: 'EN_EJECUCION' })]).datos[0].terminoProbable, '2026-12-03', 'con plan, manda su término probable');
 });

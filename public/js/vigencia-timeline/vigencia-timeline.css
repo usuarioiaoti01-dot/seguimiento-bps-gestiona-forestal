@@ -32,6 +32,11 @@
 .vt-sw-hueco { background: var(--risk); border: 1px solid var(--risk); }
 .vt-sw-mk { width: 4px; height: 14px; background: var(--marker); border-radius: 2px; }
 .vt-sw-today { width: 2px; height: 14px; background: var(--today); border-radius: 0; }
+.vt-sw-avance { height: 4px; background: var(--progress); border-radius: 2px; }
+.vt-sw-ent-ok, .vt-sw-ent-pend, .vt-sw-ent-venc { width: 12px; height: 12px; border-radius: 50%; }
+.vt-sw-ent-ok { background: var(--progress); }
+.vt-sw-ent-pend { background: var(--surface); border: 1.5px solid var(--ink-muted); }
+.vt-sw-ent-venc { background: var(--surface); border: 2px solid var(--risk); }
 
 .vt-scroll { overflow-x: auto; margin: 0 calc(var(--space-2) * -1); }
 .vt-svg { display: block; min-width: 820px; width: 100%; height: auto; }
@@ -48,6 +53,7 @@
 .vt-t-badge { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .vt-t-today { fill: var(--surface); font-size: 11px; font-weight: 650; }
 .vt-t-muted { fill: var(--ink-muted); font-size: 13px; }
+.vt-t-ent { font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .vt-tip { position: fixed; pointer-events: none; z-index: 50; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-tooltip); padding: 10px 12px; font-size: 12px; line-height: 17px; min-width: 220px; opacity: 0; transition: opacity .08s; }
 .vt-tip.is-on { opacity: 1; }

@@ -87,6 +87,17 @@ export function filasTooltip(r, { modo = 'firmada', detalle = 'completo', histor
   ];
 }
 
+/** Filas del tooltip con los entregables: avance y, por cada uno, su fecha límite y si se presentó. */
+export function filasEntregables(r) {
+  if (!r.ents || !r.ents.length) return [];
+  const presentados = r.ents.filter((x) => x.presentado).length;
+  const filas = [['Entregables presentados', `${presentados} de ${r.ents.length}${r.avance != null ? ` (${r.avance} %)` : ''}`]];
+  for (const x of r.ents) {
+    filas.push([`Entregable ${x.numero}`, `${fmtLarga(x.dia)} · ${x.presentado ? `presentado${x.fechaPresentacion ? ` ${fmtLarga(toDay(x.fechaPresentacion))}` : ''}${x.conforme ? ', conforme' : ''}` : x.vencido ? 'vencido sin presentar' : 'por presentar'}`]);
+  }
+  return filas;
+}
+
 /**
  * @param {import('./vigencia-timeline').ContratoVigencia[]} data
  * @param {{ corte: string, modo?: 'firmada'|'adenda', umbralAtencion?: number }} opts
@@ -104,8 +115,12 @@ export function computeRows(data, { corte, modo = 'firmada', umbralAtencion = -7
     const tramo = (t) => ({ ...t, ini: toDay(t.inicio), fin: toDay(t.fin) });
     const hist = (r.historial || []).map((h) => ({ numero: h.numero, ini: toDay(h.inicio), fin: toDay(h.fin), plazoDias: h.plazoDias ?? null, plazoSolicitadoDias: h.plazoSolicitadoDias ?? null }));
     const status = brecha == null ? 'none' : brecha < umbralAtencion ? 'critical' : brecha < 0 ? 'warn' : 'ok';
+    // Entregables (opcional): marca en su fecha límite y avance hasta el último presentado sin pendientes antes
+    const ents = (r.entregables || []).filter((x) => x.fechaLimite).map((x) => ({ ...x, dia: toDay(x.fechaLimite) })).sort((a, b) => a.dia - b.dia);
+    let avanceDia = null;
+    for (const x of ents) { if (!x.presentado) break; avanceDia = x.dia; }
     return {
-      ...r, ini, fin, ad, prob, end, brecha, status, hist,
+      ...r, ini, fin, ad, prob, end, brecha, status, hist, ents, avanceDia,
       brechas: (r.brechas || []).map(tramo), superposiciones: (r.superposiciones || []).map(tramo),
       porIniciar: ini > c,
       diasParaFirmarAdenda: ad != null && fin > c ? fin - c : null,

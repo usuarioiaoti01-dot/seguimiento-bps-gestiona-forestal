@@ -14,6 +14,7 @@
  * Toda escritura va con bitácora en la misma transacción; el alcance por proyecto lo impone permisos.js.
  */
 const crypto = require('crypto');
+const fs = require('fs');
 const { aDia, aFecha, hoyLima } = require('./motor/calendario');
 const { validarEntregables, calcularPlazosContratacion, esFecha } = require('./motor/plazos');
 const { detectarFormato, MAX_BYTES } = require('./documentos/almacen');
@@ -62,6 +63,20 @@ function crearContrataciones({ servicio, repo, almacen, leerDocumento = null, ex
     return t;
   }
   const liberarTemporal = (token) => temporales.delete(String(token));
+
+  /**
+   * PDF vigente del proyecto (TDR u Orden de Servicio cargados al registrar el proyecto), con la misma forma que un
+   * temporal ({ buffer, nombre }). Así la primera OS del proyecto se registra con los documentos que ya tiene.
+   */
+  function documentoProyecto(proy, tipo, rotulo) {
+    const f = almacen.vigente(tipo, 'proyecto', proy.proyecto_id);
+    if (!f) throw error(400, `El proyecto no tiene ${rotulo}: adjunte el PDF`);
+    const ruta = almacen.rutaAbsoluta(f);
+    if (!ruta || !fs.existsSync(ruta)) throw error(409, `No se encontró el archivo de ${rotulo} del proyecto: adjunte el PDF`);
+    return { buffer: fs.readFileSync(ruta), nombre: f.nombre_original, formato: 'pdf' };
+  }
+  /** Token temporal o «PROYECTO» (el documento que ya tiene el proyecto). */
+  const tomarDocumento = (valor, proy, tipo, ctx, rotulo) => (valor === 'PROYECTO' ? documentoProyecto(proy, tipo, rotulo) : tomarTemporal(valor, ctx, rotulo));
 
   // ---------------------------------------------------------------- lecturas auxiliares
   async function contexto(contrato_id, forzar = true) {
@@ -121,8 +136,8 @@ function crearContrataciones({ servicio, repo, almacen, leerDocumento = null, ex
       nuevo = servicio.validarProfesionalNuevo(d, e, ctx, proy);
     }
     const os = validarOS(d, e);
-    const tdr = tomarTemporal(e.documentos && e.documentos.TDR, ctx, 'los Términos de Referencia');
-    const osPdf = tomarTemporal(e.documentos && e.documentos.ORDEN_SERVICIO, ctx, 'la Orden de Servicio');
+    const tdr = tomarDocumento(e.documentos && e.documentos.TDR, proy, 'TDR', ctx, 'los Términos de Referencia');
+    const osPdf = tomarDocumento(e.documentos && e.documentos.ORDEN_SERVICIO, proy, 'ORDEN_SERVICIO', ctx, 'la Orden de Servicio');
     const base = { usuario: ctx.usuario, motivo: ctx.motivo || `Registro de la Orden de Servicio N.° ${os.numero} en el proyecto ${proy.codigo}`, origen: ctx.origen || 'UI' };
 
     const r = await repo.transaccion(async (t) => {
@@ -379,7 +394,7 @@ function crearContrataciones({ servicio, repo, almacen, leerDocumento = null, ex
     return { estado_contratacion: 'ANULADA' };
   }
 
-  return { subirTemporal, tomarTemporal, liberarTemporal, FORMATOS_EVIDENCIA, leerTdr, resolver, anular, registrar, reemplazarEntregables, previsualizarNotificacion, notificar, ampliarPlazo };
+  return { subirTemporal, tomarTemporal, liberarTemporal, documentoProyecto, tomarDocumento, FORMATOS_EVIDENCIA, leerTdr, resolver, anular, registrar, reemplazarEntregables, previsualizarNotificacion, notificar, ampliarPlazo };
 }
 
 module.exports = { crearContrataciones };
