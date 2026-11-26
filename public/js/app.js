@@ -38,8 +38,18 @@ const RUTAS = [
   { patron: /^#\/configuracion$/, vista: vistaConfiguracion, menu: 'config' },
 ];
 
+// Foto institucional de la pantalla de ingreso (banco del Sistema de Diseño SERFOR). El crédito es obligatorio
+// (Manual de Identidad Gráfica, numeral 1.5): al cambiar la foto, cambie también su autor.
+const FOTO_INGRESO = { archivo: 'fauna-mono-choro.jpg', alt: 'Mono choro en el bosque', credito: 'Álvaro García Alva' };
+
 function pantallaIngreso() {
-  raiz.innerHTML = `<div class="ingreso"><form class="tarjeta" id="f-ingreso">
+  raiz.innerHTML = `<div class="ingreso con-foto">
+    <figure class="ingreso-foto">
+      <img src="img/fotos/${FOTO_INGRESO.archivo}" alt="${FOTO_INGRESO.alt}">
+      <div class="ingreso-lema"><b>Comprometidos con nuestros bosques y fauna silvestre</b><span>Servicio Nacional Forestal y de Fauna Silvestre</span></div>
+      <figcaption class="ingreso-credito">Foto: ${FOTO_INGRESO.credito}</figcaption>
+    </figure>
+    <form class="tarjeta" id="f-ingreso">
     <div class="logo logo-ingreso"><div class="lat-logo">${LOGO}</div><div><b>${NOMBRE_APP}</b><small>${AREA_APP} – SERFOR</small></div></div>
     <div class="campo"><label for="correo">Correo electrónico</label><input id="correo" name="correo" type="email" autocomplete="username" required></div>
     <div class="campo"><label for="clave">Clave</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
